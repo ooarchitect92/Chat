@@ -9,7 +9,7 @@ ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_DEMO_MODE=$VITE_DEMO_MODE
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 ARG S3_PUBLIC_ENDPOINT_URL="http://localhost:9010"
 ARG WEB_CSP_EXTRA_CONNECT_SRC="http://localhost:9010 http://127.0.0.1:9010"
 COPY nginx.conf /tmp/northstar-nginx.conf.template
