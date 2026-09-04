@@ -1,0 +1,26 @@
+{
+  "name": "northstar-ai-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @northstar/web",
+    "build": "npm run build --workspace @northstar/web",
+    "lint": "npm run lint --workspace @northstar/web",
+    "test": "npm run test --workspace @northstar/web",
+    "typecheck": "npm run typecheck --workspace @northstar/web",
+    "api:dev": "uv run --project services/api uvicorn northstar_api.main:app --reload --host 0.0.0.0 --port 8000",
+    "api:lint": "uv run --project services/api ruff check services/api",
+    "api:test": "uv run --project services/api pytest -c services/api/pyproject.toml services/api/tests",
+    "api:typecheck": "uv run --project services/api mypy --config-file services/api/pyproject.toml services/api/src",
+    "compose:config": "docker compose config --quiet",
+    "compose:up": "docker compose up --build -d",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f --tail=200"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

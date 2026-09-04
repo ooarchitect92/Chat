@@ -1,0 +1,48 @@
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Reference audit artifacts (may contain private account data)
+.reference-*
+
+# JavaScript
+node_modules/
+dist/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+htmlcov/
+
+# Runtime data
+data/
+uploads/
+*.sqlite3
+*.db
+
+# IDE and operating system
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local orchestration and scanner output
+compose.override.yaml
+docker-compose.override.yml
+*.sarif
+reports/
+.secrets.baseline

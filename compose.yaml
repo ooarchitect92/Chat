@@ -1,0 +1,499 @@
+name: ${COMPOSE_PROJECT_NAME:-northstar-ai}
+
+x-api-build: &api-build
+  context: ./services/api
+  dockerfile: Dockerfile
+
+x-api-environment: &api-environment
+  APP_ENV: ${APP_ENV:-development}
+  APP_HOST: 0.0.0.0
+  APP_PORT: 8000
+  APP_API_PREFIX: /api/v1
+  APP_AUTO_CREATE_SCHEMA: ${APP_AUTO_CREATE_SCHEMA:-false}
+  APP_CORS_ORIGINS: '${APP_CORS_ORIGINS:-["http://localhost:3000","http://127.0.0.1:3000"]}'
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_JSON: ${LOG_JSON:-true}
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  JWT_SECRET: ${JWT_SECRET:-replace-with-at-least-32-random-characters}
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+  JWT_ISSUER: ${JWT_ISSUER:-northstar-api}
+  JWT_AUDIENCE: ${JWT_AUDIENCE:-northstar-web}
+  JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES:-15}
+  JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-14}
+  SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+  SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+  SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Workspace Owner}
+  SEED_TENANT_NAME: ${SEED_TENANT_NAME:-Northstar Workspace}
+  SEED_DEMO_AGENT: ${SEED_DEMO_AGENT:-false}
+  ALLOW_PRODUCTION_SEED: ${ALLOW_PRODUCTION_SEED:-false}
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://northstar_app:replace-local-postgres-runtime-password@postgres:5432/northstar}
+  DATABASE_RUNTIME_ROLE: ${DATABASE_RUNTIME_ROLE:-northstar_app}
+  DATABASE_APPLY_RUNTIME_ROLE: ${DATABASE_APPLY_RUNTIME_ROLE:-true}
+  DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+  DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-20}
+  REDIS_URL: ${REDIS_URL:-redis://:replace-local-redis-password@redis:6379/0}
+  REDIS_CONNECT_TIMEOUT_SECONDS: ${REDIS_CONNECT_TIMEOUT_SECONDS:-0.5}
+  REDIS_SOCKET_TIMEOUT_SECONDS: ${REDIS_SOCKET_TIMEOUT_SECONDS:-1.0}
+  RABBITMQ_URL: ${RABBITMQ_URL:-amqp://northstar:replace-local-rabbitmq-password@rabbitmq:5672/northstar}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+  KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+  BACKGROUND_DISPATCH_ENABLED: ${BACKGROUND_DISPATCH_ENABLED:-true}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+  S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
+  S3_BUCKET: ${S3_BUCKET:-northstar-knowledge}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-northstar}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-replace-local-minio-password}
+  S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-900}
+  UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-26214400}
+  KNOWLEDGE_MAX_EXTRACTED_CHARACTERS: ${KNOWLEDGE_MAX_EXTRACTED_CHARACTERS:-2000000}
+  KNOWLEDGE_MAX_CHUNKS: ${KNOWLEDGE_MAX_CHUNKS:-2000}
+  KNOWLEDGE_MAX_PDF_PAGES: ${KNOWLEDGE_MAX_PDF_PAGES:-500}
+  KNOWLEDGE_SITEMAP_MAX_URLS: ${KNOWLEDGE_SITEMAP_MAX_URLS:-25}
+  KNOWLEDGE_MAX_DOCX_UNCOMPRESSED_BYTES: ${KNOWLEDGE_MAX_DOCX_UNCOMPRESSED_BYTES:-104857600}
+  NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+  NVIDIA_BASE_URL: ${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+  NVIDIA_MODEL: ${NVIDIA_MODEL:-nvidia/nemotron-3-ultra-550b-a55b}
+  NVIDIA_TEMPERATURE: ${NVIDIA_TEMPERATURE:-1}
+  NVIDIA_TOP_P: ${NVIDIA_TOP_P:-0.95}
+  NVIDIA_MAX_TOKENS: ${NVIDIA_MAX_TOKENS:-16384}
+  NVIDIA_ENABLE_THINKING: ${NVIDIA_ENABLE_THINKING:-true}
+  NVIDIA_EMBEDDING_MODEL: ${NVIDIA_EMBEDDING_MODEL:-nvidia/nemotron-3-embed-1b}
+  EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-2048}
+  REQUIRE_NVIDIA: ${REQUIRE_NVIDIA:-false}
+  ALLOW_DETERMINISTIC_EMBEDDINGS: ${ALLOW_DETERMINISTIC_EMBEDDINGS:-true}
+  RATE_LIMIT_FAIL_OPEN: ${RATE_LIMIT_FAIL_OPEN:-true}
+  DEFAULT_RATE_LIMIT_PER_MINUTE: ${DEFAULT_RATE_LIMIT_PER_MINUTE:-30}
+  LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-8}
+  LOGIN_GLOBAL_RATE_LIMIT_PER_MINUTE: ${LOGIN_GLOBAL_RATE_LIMIT_PER_MINUTE:-120}
+  LOGIN_HASH_CONCURRENCY: ${LOGIN_HASH_CONCURRENCY:-4}
+  AGENT_GLOBAL_RATE_LIMIT_PER_MINUTE: ${AGENT_GLOBAL_RATE_LIMIT_PER_MINUTE:-120}
+  WIDGET_SESSION_RATE_LIMIT_PER_MINUTE: ${WIDGET_SESSION_RATE_LIMIT_PER_MINUTE:-60}
+  MODEL_CONCURRENCY_PER_PROCESS: ${MODEL_CONCURRENCY_PER_PROCESS:-16}
+  MAXIMUM_MESSAGE_CHARACTERS: ${MAXIMUM_MESSAGE_CHARACTERS:-12000}
+  RETRIEVAL_CANDIDATE_LIMIT: ${RETRIEVAL_CANDIDATE_LIMIT:-40}
+  RETRIEVAL_CONTEXT_LIMIT: ${RETRIEVAL_CONTEXT_LIMIT:-8}
+  RETRIEVAL_MIN_SCORE: ${RETRIEVAL_MIN_SCORE:-0.20}
+
+x-json-logging: &json-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-api-runtime: &api-runtime
+  image: northstar/api:${IMAGE_TAG:-local}
+  build: *api-build
+  environment: *api-environment
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 30s
+  logging: *json-logging
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+
+services:
+  web:
+    image: northstar/web:${IMAGE_TAG:-local}
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-false}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,mode=0755
+      - /var/run:size=4m,mode=0755
+      - /tmp:size=16m,mode=1777
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - edge
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    <<: *api-runtime
+    command: ["uvicorn", "northstar_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+    ports:
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    networks:
+      - edge
+      - data
+    security_opt:
+      - no-new-privileges:true
+
+  migrate:
+    image: northstar/api:${IMAGE_TAG:-local}
+    build: *api-build
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *api-environment
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-postgresql+asyncpg://northstar:replace-local-postgres-password@postgres:5432/northstar}
+      DATABASE_APPLY_RUNTIME_ROLE: "false"
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      disable: true
+
+  worker:
+    <<: *api-runtime
+    command: ["celery", "-A", "northstar_api.workers.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${CELERY_CONCURRENCY:-2}"]
+    environment:
+      <<: *api-environment
+      DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql+asyncpg://northstar_service:replace-local-postgres-service-password@postgres:5432/northstar}
+      DATABASE_APPLY_RUNTIME_ROLE: "false"
+      OTEL_SERVICE_NAME: northstar-worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - celery -A northstar_api.workers.celery_app:celery_app inspect ping --destination "celery@$${HOSTNAME}" --timeout 5 2>/dev/null | grep -q pong
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - data
+      - events
+      - egress
+    security_opt:
+      - no-new-privileges:true
+
+  job-dispatcher:
+    <<: *api-runtime
+    command: ["python", "-m", "northstar_api.workers.job_dispatcher"]
+    environment:
+      <<: *api-environment
+      DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql+asyncpg://northstar_service:replace-local-postgres-service-password@postgres:5432/northstar}
+      DATABASE_APPLY_RUNTIME_ROLE: "false"
+      OTEL_SERVICE_NAME: northstar-job-dispatcher
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks:
+      - data
+      - events
+    security_opt:
+      - no-new-privileges:true
+
+  outbox-relay:
+    <<: *api-runtime
+    command: ["python", "-m", "northstar_api.workers.outbox_publisher"]
+    environment:
+      <<: *api-environment
+      DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql+asyncpg://northstar_service:replace-local-postgres-service-password@postgres:5432/northstar}
+      DATABASE_APPLY_RUNTIME_ROLE: "false"
+      OTEL_SERVICE_NAME: northstar-outbox-relay
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks:
+      - data
+      - events
+    security_opt:
+      - no-new-privileges:true
+
+  analytics-consumer:
+    <<: *api-runtime
+    command: ["python", "-m", "northstar_api.workers.analytics_consumer"]
+    environment:
+      <<: *api-environment
+      DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql+asyncpg://northstar_service:replace-local-postgres-service-password@postgres:5432/northstar}
+      DATABASE_APPLY_RUNTIME_ROLE: "false"
+      OTEL_SERVICE_NAME: northstar-analytics-consumer
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks:
+      - data
+      - events
+    security_opt:
+      - no-new-privileges:true
+
+  object-cleaner:
+    <<: *api-runtime
+    command: ["python", "-m", "northstar_api.workers.object_cleaner"]
+    environment:
+      <<: *api-environment
+      DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql+asyncpg://northstar_service:replace-local-postgres-service-password@postgres:5432/northstar}
+      DATABASE_APPLY_RUNTIME_ROLE: "false"
+      OTEL_SERVICE_NAME: northstar-object-cleaner
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+    networks:
+      - data
+      - events
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-northstar}
+      POSTGRES_USER: ${POSTGRES_USER:-northstar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace-local-postgres-password}
+      POSTGRES_RUNTIME_USER: ${POSTGRES_RUNTIME_USER:-northstar_app}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:-replace-local-postgres-runtime-password}
+      POSTGRES_SERVICE_USER: ${POSTGRES_SERVICE_USER:-northstar_service}
+      POSTGRES_SERVICE_PASSWORD: ${POSTGRES_SERVICE_PASSWORD:-replace-local-postgres-service-password}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    ports:
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-extensions.sql:ro
+      - ./infra/postgres/002-runtime-roles.sh:/docker-entrypoint-initdb.d/002-runtime-roles.sh:ro
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - data
+      - local-access
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-replace-local-redis-password}
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --appendonly yes --appendfsync everysec --requirepass "$${REDIS_PASSWORD}"
+    ports:
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - data
+      - local-access
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  rabbitmq:
+    image: rabbitmq:4.0.5-management-alpine
+    hostname: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-northstar}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-replace-local-rabbitmq-password}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-northstar}
+    ports:
+      - "${RABBITMQ_BIND_ADDRESS:-127.0.0.1}:${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_BIND_ADDRESS:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - events
+      - local-access
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  kafka:
+    image: apache/kafka:3.9.2
+    hostname: kafka
+    restart: unless-stopped
+    environment:
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-4L6g3nShT-eMCtK--X86sw}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # Kafka 3.9 resolves the controller listener into advertised metadata;
+      # binding it to 0.0.0.0 fails KRaft validation. The service DNS name is
+      # routable inside both Kafka networks.
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://kafka:9093,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:${KAFKA_HOST_PORT:-29092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "${KAFKA_BIND_ADDRESS:-127.0.0.1}:${KAFKA_HOST_PORT:-29092}:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    networks:
+      - events
+      - local-access
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-northstar}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-replace-local-minio-password}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-http://localhost:9001}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "${MINIO_BIND_ADDRESS:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_BIND_ADDRESS:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      - data
+      - local-access
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-northstar}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-replace-local-minio-password}
+      S3_BUCKET: ${S3_BUCKET:-northstar-knowledge}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done
+        mc mb --ignore-existing "local/$${S3_BUCKET}"
+        mc anonymous set none "local/$${S3_BUCKET}"
+        mc version enable "local/$${S3_BUCKET}"
+        lifecycle="$$(mc ilm rule ls --json "local/$${S3_BUCKET}" 2>/dev/null || true)"
+        case "$${lifecycle}" in
+          *'"Expiration":{"Days":1,"ExpiredObjectAllVersions":true}'*'"Prefix":"staging/"'*) ;;
+          *) mc ilm rule add --expire-days 1 --expire-all-object-versions --prefix staging/ "local/$${S3_BUCKET}" ;;
+        esac
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - data
+    logging: *json-logging
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  kafka_data:
+  minio_data:
+
+networks:
+  edge:
+    driver: bridge
+  # Local worker outbound access for crawls and model/embedding providers.
+  # Production should replace this unrestricted bridge with an egress policy.
+  egress:
+    driver: bridge
+  # A non-internal bridge is required for Docker's loopback-only published
+  # development ports. Application traffic still uses data/events below.
+  local-access:
+    driver: bridge
+  data:
+    driver: bridge
+    internal: true
+  events:
+    driver: bridge
+    internal: true

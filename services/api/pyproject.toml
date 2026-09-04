@@ -1,0 +1,74 @@
+[project]
+name = "northstar-api"
+version = "0.1.0"
+description = "Production API for the Northstar multi-tenant grounded AI support platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "aiokafka>=0.12.0,<1",
+  "alembic>=1.16.0,<2",
+  "argon2-cffi>=25.1.0,<26",
+  "asyncpg>=0.30.0,<1",
+  "boto3>=1.40.0,<2",
+  "celery[redis]>=5.5.0,<6",
+  "email-validator>=2.2.0,<3",
+  "fastapi>=0.116.0,<1",
+  "greenlet>=3.2.0,<4",
+  "httpx>=0.28.0,<1",
+  "langchain-nvidia-ai-endpoints>=1.4.3,<2",
+  "orjson>=3.11.0,<4",
+  "pgvector>=0.4.1,<1",
+  "prometheus-client>=0.22.0,<1",
+  "pydantic-settings>=2.10.0,<3",
+  "pyjwt[crypto]>=2.10.0,<3",
+  "pypdf>=5.9.0,<7",
+  "python-docx>=1.2.0,<2",
+  "python-multipart>=0.0.20,<1",
+  "redis>=6.4.0,<7",
+  "sqlalchemy[asyncio]>=2.0.43,<3",
+  "structlog>=25.4.0,<26",
+  "uvicorn[standard]>=0.35.0,<1",
+]
+
+[dependency-groups]
+dev = [
+  "aiosqlite>=0.21.0,<1",
+  "asgi-lifespan>=2.1.0,<3",
+  "mypy>=1.17.0,<2",
+  "pytest>=9.0.3,<10",
+  "pytest-asyncio>=1.1.0,<2",
+  "pytest-cov>=6.2.0,<7",
+  "ruff>=0.12.0,<1",
+]
+
+[project.scripts]
+northstar-api = "northstar_api.main:run"
+northstar-worker = "northstar_api.workers.celery_app:main"
+northstar-outbox = "northstar_api.workers.outbox_publisher:main"
+northstar-analytics = "northstar_api.workers.analytics_consumer:main"
+northstar-job-dispatcher = "northstar_api.workers.job_dispatcher:main"
+northstar-object-cleaner = "northstar_api.workers.object_cleaner:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/northstar_api"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+ignore = ["B008", "E501", "S101", "S104", "UP042", "UP046"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
+strict = true
