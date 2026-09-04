@@ -237,6 +237,29 @@ describe('IntegrationsPage WhatsApp connection', () => {
     expect(screen.getByRole('button', { name: 'Disconnect to reconnect' })).toBeInTheDocument();
   });
 
+  it('shows the Meta setup path when Facebook Login is not configured', async () => {
+    apiMocks.bootstrap.mockResolvedValue({
+      ...bootstrap,
+      appId: null,
+      configurationId: null,
+      signupSession: null,
+      enabled: false,
+    });
+    apiMocks.status.mockResolvedValue({ enabled: false, connected: false, connection: null });
+    const user = userEvent.setup();
+    renderPage();
+    const whatsappHeading = await screen.findByRole('heading', { name: 'WhatsApp' });
+    await user.click(within(whatsappHeading.closest('section')!).getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByRole('heading', { name: 'Set up Facebook Login for WhatsApp' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Meta setup required' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: /Open Meta App Dashboard/ })).toHaveAttribute(
+      'href',
+      'https://developers.facebook.com/apps/',
+    );
+    expect(apiMocks.loadFacebookSdk).not.toHaveBeenCalled();
+  });
+
   it('prevents non-admin members from starting an administrator-only Meta flow', async () => {
     apiMocks.authSession.mockReturnValue({
       accessToken: 'member-access', expiresAt: '2026-09-05T00:00:00Z',

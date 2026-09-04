@@ -206,6 +206,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
     setPin('');
     setRevision((value) => value + 1);
   };
+  const metaSetupRequired = Boolean(configuration && (!configuration.enabled || !metaConfiguration(configuration)));
   const canConnect = Boolean(configuration?.enabled && configuration.signupSession && metaConfiguration(configuration) && sdkReady && activeAgents.some((agent) => agent.id === agentId) && pinValid && !busy);
 
   return <Modal
@@ -219,7 +220,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
       ? <><Button variant="secondary" onClick={() => setConfirmDisconnect(false)} disabled={busy}>Keep connected</Button><Button variant="danger" icon={busy ? LoaderCircle : Unplug} onClick={() => void disconnect()} disabled={busy}>{busy ? 'Disconnecting…' : 'Disconnect WhatsApp'}</Button></>
       : connection
         ? <Button onClick={close} disabled={closeDisabled}>Done</Button>
-        : <><Button variant="secondary" onClick={close} disabled={closeDisabled}>{operation === 'waiting-meta' ? 'Cancel signup' : 'Cancel'}</Button><Button className="meta-connect-button" onClick={connect} disabled={!canConnect}>{busy ? <LoaderCircle className="spin" /> : <span className="meta-f" aria-hidden="true">f</span>}{operation === 'waiting-meta' ? 'Complete in Meta…' : operation === 'finalizing' ? 'Connecting number…' : sdkReady ? 'Continue with Facebook' : 'Loading Meta Login…'}</Button></>}
+        : <><Button variant="secondary" onClick={close} disabled={closeDisabled}>{operation === 'waiting-meta' ? 'Cancel signup' : 'Cancel'}</Button><Button className="meta-connect-button" onClick={connect} disabled={!canConnect}>{busy ? <LoaderCircle className="spin" /> : <span className="meta-f" aria-hidden="true">f</span>}{operation === 'waiting-meta' ? 'Complete in Meta…' : operation === 'finalizing' ? 'Connecting number…' : sdkReady ? 'Continue with Facebook' : metaSetupRequired ? 'Meta setup required' : 'Loading Meta Login…'}</Button></>}
   >
     <div className="whatsapp-manager" aria-busy={loading || busy}>
       <div className="whatsapp-manager__brand">
@@ -232,7 +233,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
 
       {!loading && error ? <div className="integration-error" role="alert"><AlertCircle /><span><strong>We couldn’t complete that step</strong><small>{error}</small></span>{!busy && !connection ? <Button variant="secondary" size="sm" icon={RefreshCw} onClick={retry}>Retry</Button> : null}</div> : null}
 
-      {!loading && configuration && (!configuration.enabled || !metaConfiguration(configuration)) ? <div className="integration-setup-required"><LockKeyhole /><div><h3>Meta setup is required</h3><p>Add the Meta App ID, Embedded Signup configuration ID, app secret, webhook verification token, and encryption key to the server environment. Secrets must never be placed in the browser.</p></div></div> : null}
+      {!loading && metaSetupRequired ? <div className="integration-setup-required"><LockKeyhole /><div><h3>Set up Facebook Login for WhatsApp</h3><p>Create a Meta Business app with WhatsApp and Facebook Login for Business, then create an Embedded Signup configuration. Add the App ID, configuration ID, App Secret, webhook verification token, and encryption key to the server <code>.env</code> file and run <code>start.bat</code> again. Secrets must never be entered in this browser.</p><a className="button button--primary button--sm meta-setup-link" href="https://developers.facebook.com/apps/" target="_blank" rel="noreferrer">Open Meta App Dashboard <ExternalLink /></a></div></div> : null}
 
       {!loading && connection ? <>
         <div className="whatsapp-number-card">
