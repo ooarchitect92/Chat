@@ -15,18 +15,41 @@ if errorlevel 1 (
   echo         Start Docker Desktop, wait for the whale icon to go steady, then run this again.
   goto :fail
 )
-echo [1/6] Docker is running.
+echo [1/7] Docker is running.
 
 REM ---------- 2. Ensure .env exists ----------
 if not exist ".env" (
   copy /y ".env.example" ".env" >nul
-  echo [2/6] Created .env from .env.example.
+  echo [2/7] Created .env from .env.example.
 ) else (
-  echo [2/6] Using existing .env.
+  echo [2/7] Using existing .env.
 )
 
-REM ---------- 3. Clear this project's ports ----------
-echo [3/6] Clearing ports (stopping any previous Northstar containers)...
+REM ---------- 3. Reconcile browser upload/CSP build settings ----------
+REM Older .env files predate WEB_CSP_EXTRA_CONNECT_SRC or may point it at a
+REM different MinIO port. Compose gives process variables precedence over .env,
+REM so provide the effective upload origin for this run without rewriting the
+REM user's file or weakening the image's origin validator.
+set "ENV_S3_PUBLIC_ENDPOINT_URL="
+for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
+  if /i "%%A"=="S3_PUBLIC_ENDPOINT_URL" set "ENV_S3_PUBLIC_ENDPOINT_URL=%%B"
+)
+if defined S3_PUBLIC_ENDPOINT_URL (
+  set "ENV_S3_PUBLIC_ENDPOINT_URL=%S3_PUBLIC_ENDPOINT_URL%"
+)
+set "ENV_S3_PUBLIC_ENDPOINT_URL=%ENV_S3_PUBLIC_ENDPOINT_URL:"=%"
+if not defined ENV_S3_PUBLIC_ENDPOINT_URL set "ENV_S3_PUBLIC_ENDPOINT_URL=http://localhost:9000"
+set "WEB_CSP_EXTRA_CONNECT_SRC=%ENV_S3_PUBLIC_ENDPOINT_URL%"
+
+docker compose config --quiet
+if errorlevel 1 (
+  echo [ERROR] Docker Compose configuration is invalid. Review .env and compose.yaml.
+  goto :fail
+)
+echo [3/7] Local upload and browser security settings are compatible.
+
+REM ---------- 4. Clear this project's ports ----------
+echo [4/7] Clearing ports (stopping any previous Northstar containers)...
 docker compose down --remove-orphans >nul 2>&1
 
 set "PORTS=3100 8100 55432 6399 5673 15673 29093 9010 9011"
@@ -41,18 +64,19 @@ if defined BLOCKED (
 )
 echo       All required ports are free.
 
-REM ---------- 4. Build and start ----------
-echo [4/6] Building images and starting all services ^(first run can take several minutes^)...
+REM ---------- 5. Build and start ----------
+echo [5/7] Building images and starting all services ^(first run can take several minutes^)...
 docker compose up --build -d
 if errorlevel 1 (
   echo.
-  echo [ERROR] docker compose failed to start. Full logs:
-  echo         docker compose logs --tail=200
+  echo [ERROR] Docker Compose failed to build or start.
+  echo         Inspect the failure with: docker compose logs --tail=200
+  docker compose ps -a
   goto :fail
 )
 
-REM ---------- 5. Wait for the API to become ready ----------
-echo [5/6] Waiting for the API to report ready...
+REM ---------- 6. Wait for the API to become ready ----------
+echo [6/7] Waiting for the API to report ready...
 set /a TRIES=0
 :waitapi
 set /a TRIES+=1
@@ -69,8 +93,8 @@ goto :waitapi
 :apiready
 echo       API is ready.
 
-REM ---------- 6. Wait for the web app ----------
-echo [6/6] Waiting for the web app...
+REM ---------- 7. Wait for the web app ----------
+echo [7/7] Waiting for the web app...
 set /a TRIES=0
 :waitweb
 set /a TRIES+=1
@@ -84,14 +108,6 @@ ping -n 4 127.0.0.1 >nul
 goto :waitweb
 :webready
 
-REM ---------- Read the seeded credentials straight out of .env ----------
-set "ADMIN_EMAIL="
-set "ADMIN_PASSWORD="
-for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
-  if /i "%%A"=="SEED_ADMIN_EMAIL" set "ADMIN_EMAIL=%%B"
-  if /i "%%A"=="SEED_ADMIN_PASSWORD" set "ADMIN_PASSWORD=%%B"
-)
-
 echo.
 echo ==========================================================
 echo   NORTHSTAR AI IS UP
@@ -104,19 +120,19 @@ echo   OpenAPI JSON     http://localhost:8100/openapi.json
 echo   API base path    http://localhost:8100/api/v1
 echo.
 echo   --- Test login ---
-echo   Email            %ADMIN_EMAIL%
-echo   Password         %ADMIN_PASSWORD%
+echo   Use SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD from your local .env file.
+echo   The launcher does not print credentials to the terminal.
 echo.
 echo   To authorize Swagger:
-echo     1. POST /api/v1/auth/login with the email and password above
+echo     1. POST /api/v1/auth/login with the email and password from .env
 echo     2. Copy "accessToken" out of the response
 echo     3. Click "Authorize" at the top right and paste the token
 echo.
 echo   --- Infrastructure consoles ---
-echo   RabbitMQ         http://localhost:15673   northstar / replace-local-rabbitmq-password
-echo   MinIO console    http://localhost:9011    northstar / replace-local-minio-password
-echo   Postgres         localhost:55432          northstar / replace-local-postgres-password
-echo   Redis            localhost:6399           password: replace-local-redis-password
+echo   RabbitMQ         http://localhost:15673   credentials are in .env
+echo   MinIO console    http://localhost:9011    credentials are in .env
+echo   Postgres         localhost:55432          credentials are in .env
+echo   Redis            localhost:6399           credentials are in .env
 echo   Kafka bootstrap  localhost:29093
 echo.
 echo   Live logs        docker compose logs -f
@@ -124,11 +140,14 @@ echo   Shut down        docker compose down
 echo ==========================================================
 echo.
 
-start "" http://localhost:8100/docs
-start "" http://localhost:3100
-
-echo Opened Swagger and the web app in your browser.
-pause
+if not defined NORTHSTAR_NO_BROWSER (
+  start "" http://localhost:8100/docs
+  start "" http://localhost:3100
+  echo Opened Swagger and the web app in your browser.
+) else (
+  echo Browser launch skipped because NORTHSTAR_NO_BROWSER is set.
+)
+if not defined NORTHSTAR_NO_PAUSE pause
 endlocal
 exit /b 0
 
@@ -144,6 +163,6 @@ exit /b 0
 
 :fail
 echo.
-pause
+if not defined NORTHSTAR_NO_PAUSE pause
 endlocal
 exit /b 1
