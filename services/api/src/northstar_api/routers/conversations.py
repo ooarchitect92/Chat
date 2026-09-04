@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, cast
 from uuid import UUID
 
@@ -9,9 +10,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Load, selectinload
 
+from northstar_api.config import get_settings
 from northstar_api.database import get_session
 from northstar_api.dependencies import CurrentPrincipal, WorkspaceWritePrincipal
-from northstar_api.models import Conversation, Message, MessageRole
+from northstar_api.models import (
+    Channel,
+    Conversation,
+    Message,
+    MessageRole,
+    WhatsAppConnection,
+    WhatsAppInboundMessage,
+    WhatsAppOutboundDelivery,
+)
 from northstar_api.schemas import (
     CitationOut,
     ConversationOut,
@@ -21,6 +31,8 @@ from northstar_api.schemas import (
     PageResult,
 )
 from northstar_api.services.outbox import enqueue_event
+from northstar_api.services.whatsapp import token_expiry_is_current
+from northstar_api.workers.tasks import send_whatsapp_human_reply
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 DB = Annotated[AsyncSession, Depends(get_session)]
@@ -152,6 +164,57 @@ async def reply_to_conversation(
     )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    whatsapp_connection: WhatsAppConnection | None = None
+    if conversation.channel == Channel.WHATSAPP:
+        if not conversation.visitor_id or not conversation.visitor_id.isdigit():
+            raise HTTPException(status_code=409, detail="WhatsApp recipient is unavailable")
+        whatsapp_connection = await session.scalar(
+            select(WhatsAppConnection)
+            .where(
+                WhatsAppConnection.tenant_id == principal.tenant_id,
+                WhatsAppConnection.agent_id == conversation.agent_id,
+                WhatsAppConnection.status == "connected",
+            )
+            .with_for_update()
+        )
+        if not whatsapp_connection:
+            raise HTTPException(status_code=409, detail="WhatsApp is not connected for this agent")
+        if not token_expiry_is_current(whatsapp_connection.token_expires_at):
+            raise HTTPException(
+                status_code=409,
+                detail="WhatsApp authorization expired; reconnect the integration",
+            )
+        latest_customer_message = await session.scalar(
+            select(
+                func.max(
+                    func.coalesce(
+                        WhatsAppInboundMessage.provider_timestamp,
+                        WhatsAppInboundMessage.created_at,
+                    )
+                )
+            ).where(
+                WhatsAppInboundMessage.tenant_id == principal.tenant_id,
+                WhatsAppInboundMessage.connection_id == whatsapp_connection.id,
+                WhatsAppInboundMessage.conversation_id == conversation.id,
+                WhatsAppInboundMessage.status.not_in(("ignored", "cancelled")),
+                WhatsAppInboundMessage.message_text != "",
+            )
+        )
+        if latest_customer_message is not None and latest_customer_message.tzinfo is None:
+            latest_customer_message = latest_customer_message.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        if (
+            latest_customer_message is None
+            or latest_customer_message < now - timedelta(hours=24)
+            or latest_customer_message > now + timedelta(minutes=5)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The 24-hour WhatsApp customer-service window is closed; "
+                    "send an approved template instead"
+                ),
+            )
     sequence = int(
         await session.scalar(
             select(func.coalesce(func.max(Message.sequence), 0)).where(
@@ -167,11 +230,23 @@ async def reply_to_conversation(
         sequence=sequence + 1,
         role=MessageRole.AGENT,
         content=payload.content.strip(),
-        finish_reason="sent",
+        finish_reason="queued" if whatsapp_connection else "sent",
     )
     session.add(message)
     conversation.updated_at = datetime.now(UTC)
     await session.flush()
+    delivery: WhatsAppOutboundDelivery | None = None
+    if whatsapp_connection:
+        delivery = WhatsAppOutboundDelivery(
+            tenant_id=principal.tenant_id,
+            connection_id=whatsapp_connection.id,
+            phone_number_id=whatsapp_connection.phone_number_id,
+            message_id=message.id,
+            recipient_wa_id=conversation.visitor_id or "",
+            status="queued",
+        )
+        session.add(delivery)
+        await session.flush()
     enqueue_event(
         session,
         tenant_id=principal.tenant_id,
@@ -186,6 +261,26 @@ async def reply_to_conversation(
         },
     )
     await session.commit()
+    if delivery:
+        try:
+            await asyncio.to_thread(
+                send_whatsapp_human_reply.apply_async,
+                args=[str(delivery.id)],
+                queue="whatsapp.outbound",
+                routing_key="whatsapp.outbound",
+            )
+            delivery.dispatch_attempts += 1
+            delivery.dispatched_at = datetime.now(UTC)
+            delivery.next_dispatch_at = datetime.now(UTC) + timedelta(minutes=5)
+            delivery.last_error = None
+        except Exception:
+            # The durable dispatcher will retry this database-backed delivery.
+            delivery.dispatch_attempts += 1
+            exhausted = delivery.dispatch_attempts >= get_settings().whatsapp_dispatch_max_attempts
+            delivery.status = "dispatch_failed" if exhausted else "failed"
+            delivery.next_dispatch_at = None if exhausted else datetime.now(UTC)
+            delivery.last_error = "queue dispatch unavailable"
+        await session.commit()
     await session.refresh(message)
     return MessageOut(
         id=message.id,

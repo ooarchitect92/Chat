@@ -1,5 +1,5 @@
 import { X, type LucideIcon } from 'lucide-react';
-import { useEffect, useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -19,8 +19,8 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
   return <section className={`card ${className}`}>{children}</section>;
 }
 
-export function Field({ label, hint, error, children, htmlFor }: { label: string; hint?: string; error?: string; children: ReactNode; htmlFor?: string }) {
-  return <div className="field"><label htmlFor={htmlFor}>{label}</label>{children}{error ? <small className="field__error">{error}</small> : hint ? <small>{hint}</small> : null}</div>;
+export function Field({ label, hint, error, children, htmlFor, messageId }: { label: string; hint?: string; error?: string; children: ReactNode; htmlFor?: string; messageId?: string }) {
+  return <div className="field"><label htmlFor={htmlFor}>{label}</label>{children}{error ? <small id={messageId} className="field__error">{error}</small> : hint ? <small id={messageId}>{hint}</small> : null}</div>;
 }
 
 export function Switch({ checked, onChange, label, description, disabled }: { checked: boolean; onChange: (value: boolean) => void; label: string; description?: string; disabled?: boolean }) {
@@ -31,19 +31,40 @@ export function Switch({ checked, onChange, label, description, disabled }: { ch
   </label>;
 }
 
-interface ModalProps { open: boolean; onClose: () => void; title: string; description?: string; children: ReactNode; footer?: ReactNode; size?: 'sm' | 'md' | 'lg' }
-export function Modal({ open, onClose, title, description, children, footer, size = 'md' }: ModalProps) {
+interface ModalProps { open: boolean; onClose: () => void; title: string; description?: string; children: ReactNode; footer?: ReactNode; size?: 'sm' | 'md' | 'lg'; closeDisabled?: boolean }
+export function Modal({ open, onClose, title, description, children, footer, size = 'md', closeDisabled = false }: ModalProps) {
   const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  const closeDisabledRef = useRef(closeDisabled);
+  closeRef.current = onClose;
+  closeDisabledRef.current = closeDisabled;
   useEffect(() => {
     if (!open) return;
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector = 'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+    const focusFrame = window.requestAnimationFrame(() => {
+      const first = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
+      (first ?? dialogRef.current)?.focus();
+    });
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !closeDisabledRef.current) closeRef.current();
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector)];
+      if (!focusable.length) { event.preventDefault(); dialogRef.current.focus(); return; }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', close); document.body.classList.add('modal-open');
-    return () => { window.removeEventListener('keydown', close); document.body.classList.remove('modal-open'); };
-  }, [open, onClose]);
+    return () => { window.cancelAnimationFrame(focusFrame); window.removeEventListener('keydown', close); document.body.classList.remove('modal-open'); previousFocus?.focus(); };
+  }, [open]);
   if (!open) return null;
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className={`modal modal--${size}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div className="modal__header"><div><h2 id={titleId}>{title}</h2>{description ? <p>{description}</p> : null}</div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X /></button></div>
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !closeDisabled) onClose(); }}>
+    <div ref={dialogRef} tabIndex={-1} className={`modal modal--${size}`} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}>
+      <div className="modal__header"><div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><button className="icon-button" onClick={onClose} aria-label="Close dialog" disabled={closeDisabled}><X /></button></div>
       <div className="modal__body">{children}</div>{footer ? <div className="modal__footer">{footer}</div> : null}
     </div>
   </div>;

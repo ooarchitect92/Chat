@@ -51,7 +51,7 @@ def verify_password(password: str, password_hash: str | None) -> bool:
 
 def _token(
     subject: str,
-    token_type: Literal["access", "refresh", "widget"],
+    token_type: Literal["access", "refresh", "widget", "whatsapp_signup"],
     expires_delta: timedelta,
     claims: dict[str, Any],
     settings: Settings,
@@ -121,6 +121,21 @@ def create_widget_token(
         "widget",
         timedelta(hours=12),
         {"tid": str(tenant_id), "aid": str(agent_id), "origin": origin},
+        config,
+    )
+
+
+def create_whatsapp_signup_token(
+    user_id: UUID,
+    tenant_id: UUID,
+    settings: Settings | None = None,
+) -> tuple[str, datetime]:
+    config = settings or get_settings()
+    return _token(
+        str(user_id),
+        "whatsapp_signup",
+        timedelta(seconds=config.meta_signup_session_ttl_seconds),
+        {"tid": str(tenant_id)},
         config,
     )
 

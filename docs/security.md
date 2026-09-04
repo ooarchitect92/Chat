@@ -53,7 +53,7 @@ Non-production/test APIs retain refresh tokens in response/request bodies for CL
 - Put public chat behind an edge rate limiter/bot control in addition to the Redis application limiter.
 - Apply request body and message-size limits before parsing or model invocation.
 - Sanitize rendered Markdown/HTML and block dangerous URL schemes.
-- Use a restrictive Content Security Policy. The local Nginx widget route must permit external framing to function and therefore uses `frame-ancestors *`; per-agent API origin checks gate bootstrap and sessions. For stronger production enforcement, have the edge serve the widget shell with a per-agent `frame-ancestors` allowlist or require a signed installation token. The admin SPA retains `X-Frame-Options: SAMEORIGIN`.
+- Use a restrictive Content Security Policy. The web image builds the admin policy with the required Meta endpoints and validated `WEB_CSP_EXTRA_CONNECT_SRC` origins; the build fails unless that list contains `S3_PUBLIC_ENDPOINT_URL` exactly, preventing a deployed policy from silently blocking direct browser uploads. Rebuild the image when either value changes. The local Nginx widget route must permit external framing to function and therefore overrides the admin policy with self-only resources and `frame-ancestors *`; per-agent API origin checks gate bootstrap and sessions. For stronger production enforcement, have the edge serve the widget shell with a per-agent `frame-ancestors` allowlist or require a signed installation token. The admin SPA retains `X-Frame-Options: SAMEORIGIN`.
 - Verify webhook signatures over the raw body and reject stale timestamps/replayed delivery IDs.
 
 ## AI and retrieval safety

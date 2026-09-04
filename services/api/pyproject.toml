@@ -11,6 +11,7 @@ dependencies = [
   "asyncpg>=0.30.0,<1",
   "boto3>=1.40.0,<2",
   "celery[redis]>=5.5.0,<6",
+  "cryptography>=45.0.0,<51",
   "email-validator>=2.2.0,<3",
   "fastapi>=0.116.0,<1",
   "greenlet>=3.2.0,<4",

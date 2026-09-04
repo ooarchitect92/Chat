@@ -37,9 +37,43 @@ celery_app.conf.update(
         ),
         Queue("ingest.failed", exchange=dead_letter_exchange, routing_key="ingest.failed", durable=True),
         Queue("operations", exchange=jobs_exchange, routing_key="operations", durable=True),
+        Queue(
+            "whatsapp.inbound",
+            exchange=jobs_exchange,
+            routing_key="whatsapp.inbound",
+            durable=True,
+            queue_arguments={
+                "x-dead-letter-exchange": dead_letter_exchange.name,
+                "x-dead-letter-routing-key": "whatsapp.failed",
+            },
+        ),
+        Queue(
+            "whatsapp.outbound",
+            exchange=jobs_exchange,
+            routing_key="whatsapp.outbound",
+            durable=True,
+            queue_arguments={
+                "x-dead-letter-exchange": dead_letter_exchange.name,
+                "x-dead-letter-routing-key": "whatsapp.failed",
+            },
+        ),
+        Queue(
+            "whatsapp.failed",
+            exchange=dead_letter_exchange,
+            routing_key="whatsapp.failed",
+            durable=True,
+        ),
     ),
     task_routes={
         "northstar.ingest_source": {"queue": "ingest.source", "routing_key": "ingest.source"},
+        "northstar.process_whatsapp_inbound": {
+            "queue": "whatsapp.inbound",
+            "routing_key": "whatsapp.inbound",
+        },
+        "northstar.send_whatsapp_human_reply": {
+            "queue": "whatsapp.outbound",
+            "routing_key": "whatsapp.outbound",
+        },
     },
 )
 

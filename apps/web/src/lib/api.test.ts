@@ -3,6 +3,19 @@ import { api } from '@/lib/api';
 import type { ChatStreamEvent, Session, WidgetBootstrap, WidgetSession } from '@/types';
 
 describe('api client', () => {
+  it('preserves a plain-text proxy error as an ApiError without reading the response twice', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Upstream Meta gateway unavailable', {
+      status: 502, headers: { 'Content-Type': 'text/plain' },
+    })));
+
+    await expect(api.integrations.whatsapp.status()).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'Request failed (502)',
+      status: 502,
+      detail: 'Upstream Meta gateway unavailable',
+    });
+  });
+
   it('persists a successful server session for later authenticated requests', async () => {
     const serverSession: Session = {
       accessToken: 'server-token',
@@ -241,5 +254,32 @@ describe('api client', () => {
     expect(form.get('key')).toBe('tenant/guide.pdf');
     expect(form.get('policy')).toBe('signed-policy');
     expect(form.get('file')).toBe(file);
+  });
+
+  it('sends Embedded Signup credentials directly to the authenticated completion endpoint', async () => {
+    const input = {
+      code: 'short-lived-authorization-code',
+      wabaId: '123456789',
+      phoneNumberId: '987654321',
+      agentId: '11111111-1111-1111-1111-111111111111',
+      signupSession: 'server-signed-signup-session',
+      twoStepVerificationPin: '246810',
+    };
+    const connection = {
+      wabaId: input.wabaId, phoneNumberId: input.phoneNumberId, agentId: input.agentId,
+      displayPhoneNumber: '+1 555 0100', verifiedName: 'Northstar Support', status: 'connected', connectedAt: '2026-09-04T00:00:00Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(connection), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(api.integrations.whatsapp.complete(input)).resolves.toEqual(connection);
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/integrations/whatsapp/complete', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify(input),
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    }));
   });
 });

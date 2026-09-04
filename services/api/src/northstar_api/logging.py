@@ -59,6 +59,11 @@ def configure_logging(settings: Settings) -> None:
     ]
     renderer = structlog.processors.JSONRenderer() if settings.log_json else structlog.dev.ConsoleRenderer()
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=settings.log_level.upper(), force=True)
+    # httpx logs complete request URLs at INFO. OAuth endpoints place short-lived
+    # codes and (per Meta's documented exchange) client secrets in query
+    # parameters, so provider HTTP client URLs must never reach application logs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     structlog.configure(
         processors=[*shared_processors, renderer],
         wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(settings.log_level.upper())),

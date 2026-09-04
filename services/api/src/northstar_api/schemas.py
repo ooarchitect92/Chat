@@ -392,6 +392,39 @@ class IntegrationPatch(APIModel):
     connected: bool
 
 
+class WhatsAppConnectionOut(APIModel):
+    waba_id: str
+    phone_number_id: str
+    display_phone_number: str
+    verified_name: str
+    agent_id: UUID
+    status: str
+    token_expires_at: datetime | None = None
+    connected_at: datetime
+
+
+class WhatsAppStatusOut(APIModel):
+    enabled: bool
+    connected: bool
+    connection: WhatsAppConnectionOut | None = None
+
+
+class WhatsAppBootstrapOut(WhatsAppStatusOut):
+    app_id: str | None = None
+    configuration_id: str | None = None
+    api_version: str
+    signup_session: str | None = None
+
+
+class WhatsAppCompleteRequest(APIModel):
+    signup_session: str = Field(min_length=20, max_length=4096)
+    code: str = Field(min_length=8, max_length=4096)
+    waba_id: str = Field(min_length=1, max_length=80, pattern=r"^[0-9]+$")
+    phone_number_id: str = Field(min_length=1, max_length=80, pattern=r"^[0-9]+$")
+    agent_id: UUID
+    two_step_verification_pin: str = Field(pattern=r"^[0-9]{6}$")
+
+
 class WidgetBootstrap(APIModel):
     agent_id: UUID
     public_id: str

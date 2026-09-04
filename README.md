@@ -17,6 +17,7 @@ Never commit `.env`, credentials, exported customer data, or browser-audit artif
 - Grounded-before-stream chat over server-sent events, bounded conversation history, sensitive-data redaction, status changes, sentiment, and escalation workflows.
 - A customizable website widget with a lazy, origin-checked parent/iframe handshake, a separate first-party hosted page, and launcher, color, typography, greeting, suggested-question, placement, privacy, and branding settings.
 - Operational dashboard, conversation analytics, knowledge health, and integration management.
+- Meta WhatsApp Cloud API integration with Embedded Signup v4, existing/new phone-number selection, encrypted customer tokens, signed/idempotent webhooks, and queued AI and human replies.
 - Tenant-scoped authentication and authorization with short-lived access tokens, production HttpOnly refresh cookies, and Redis-backed one-time refresh-token families that revoke on reuse.
 - Durable background work through RabbitMQ/Celery, replayable domain events through Kafka, and Redis-backed coordination.
 - Transactional outbox delivery so database commits and published analytics events do not silently diverge.
@@ -70,6 +71,8 @@ All host-published ports bind to `127.0.0.1` by default. Change the bind variabl
 
 File uploads use `S3_PUBLIC_ENDPOINT_URL=http://localhost:9010` for the presigned form returned to the browser, while API and worker object access uses `S3_ENDPOINT_URL=http://minio:9000` on the private Compose network. The client must compute SHA-256 over the exact bytes before requesting a form. The signed multipart fields bind the media type, declared size, checksum, and maximum byte range; when the source is created, immutable-snapshot promotion pins the staged object version/ETag, reads and verifies its bytes, conditionally copies that exact snapshot into the durable `knowledge/` prefix, verifies the copy, and removes staging. Community MinIO applies `MINIO_API_CORS_ALLOW_ORIGIN` cluster-wide; the local default explicitly allows the documented `localhost` and `127.0.0.1` web/development origins on ports 3100 and 8100. If you change the browser origin, update that variable as well as `APP_CORS_ORIGINS`. Production must use exact deployed origins and point both endpoint settings at appropriate internal/public routes for the same private bucket (often one split-horizon object-store hostname). The current browser upload flow requires multipart `POST`, not presigned `PUT`; add `GET`/`HEAD` to bucket CORS only if a browser download flow needs them. Local MinIO expires every version and delete marker for abandoned `staging/` uploads after one day.
 
+The web image bakes a restrictive admin Content Security Policy at build time. Set `WEB_CSP_EXTRA_CONNECT_SRC` to a space-separated list of exact HTTP(S) origins and include `S3_PUBLIC_ENDPOINT_URL` exactly (for example, set both to `https://objects.example.com`); the image build fails if they drift or if a value contains a path, credentials, query, fragment, or invalid port. Rebuild the web image whenever either value changes. The policy already includes the minimum Meta SDK/login endpoints. The public `/widget/` route overrides it with a separate self-only policy.
+
 ## NVIDIA model configuration
 
 The requested configuration is supported directly and is the repository default:
@@ -94,6 +97,22 @@ Useful related variables:
 - `REQUIRE_NVIDIA=true` disables the grounded text fallback on provider failure; production configuration also rejects a missing provider key.
 - `ALLOW_DETERMINISTIC_EMBEDDINGS=false` disables the local embedding fallback required to be off in production.
 
+## WhatsApp Business connection
+
+The Integrations page now launches Meta's official Embedded Signup v4 flow. A workspace owner signs in to Facebook, chooses an existing WhatsApp Cloud API number or adds and verifies a new number, selects an active Northstar agent, and supplies the required six-digit two-step-verification PIN. Northstar immediately exchanges Meta's short-lived authorization code on the server, validates the selected WABA and phone number, registers the number, subscribes the WABA webhook, encrypts the customer token, and begins routing messages through RabbitMQ workers.
+
+Live connection requires a Meta Business app, a Facebook Login for Business Embedded Signup configuration, the WhatsApp product, Advanced Access to the required WhatsApp permissions, and a publicly reachable HTTPS callback at:
+
+```text
+https://YOUR_DOMAIN/api/v1/webhooks/whatsapp
+```
+
+Set the `META_*` variables documented in `.env.example`; never put the App Secret, webhook verification token, token-encryption key, customer token, or registration PIN in a `VITE_*` variable. The local HTTP Compose URL is suitable for development but cannot be registered as Meta's production webhook.
+
+The standard flow supports numbers already present in a WABA and newly verified Cloud API numbers. A number currently used by the WhatsApp Business mobile app requires Meta's separate Coexistence onboarding product, which this standard flow intentionally does not claim to support. SMS/voice verification, Meta consent, business review, and account approval remain user/Meta-controlled steps and cannot be bypassed.
+
+Follow the complete [Meta WhatsApp setup and operations guide](docs/whatsapp.md) before connecting a real number.
+
 ## Demo and live behavior
 
 The frontend has two deliberately distinct modes:
@@ -112,8 +131,8 @@ The environment seeder is for disposable local development: `SEED_ADMIN_EMAIL` a
 | PostgreSQL + pgvector | Tenant data, configuration, conversations, knowledge metadata/`halfvec` vectors, outbox, projections, event quarantine | System of record; backed up and migrated |
 | MinIO | Uploaded knowledge source objects | Private, versioned local bucket |
 | Redis | Rate-limit counters, access-token revocations, and refresh-family rotation state | Persistence/no-eviction required for live security TTLs; never business records |
-| RabbitMQ + Celery | Bounded document extraction, chunking, and embedding commands | At-least-once; handlers must be retry-safe and protected against concurrent duplicate work |
-| Job dispatcher | Claims durable queued-ingestion rows and submits them to RabbitMQ | Retries broker publication without losing the database-backed job |
+| RabbitMQ + Celery | Document ingestion plus WhatsApp inbound AI work and outbound human delivery | At-least-once; handlers are idempotent and WhatsApp work is serialized per customer thread |
+| Job dispatcher | Claims durable queued ingestion/WhatsApp rows and submits them to RabbitMQ | Retries broker publication without losing the database-backed job or message receipt |
 | Kafka (KRaft) | Ordered, replayable domain/analytics event stream | At-least-once; consumers deduplicate by event ID |
 | Outbox relay | Publishes committed database events to Kafka | Retries unpublished rows; duplicates are possible |
 | Analytics consumer | Builds query-efficient analytics projections | Replayable and idempotent |
@@ -176,6 +195,7 @@ compose.yaml            Complete local service topology
 - [HTTP and streaming API](docs/api.md)
 - [Security model and production checklist](docs/security.md)
 - [Operations and recovery](docs/operations.md)
+- [Meta WhatsApp setup and operations](docs/whatsapp.md)
 
 ## Production expectations
 

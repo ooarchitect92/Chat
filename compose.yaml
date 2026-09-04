@@ -61,6 +61,16 @@ x-api-environment: &api-environment
   NVIDIA_ENABLE_THINKING: ${NVIDIA_ENABLE_THINKING:-true}
   NVIDIA_EMBEDDING_MODEL: ${NVIDIA_EMBEDDING_MODEL:-nvidia/nemotron-3-embed-1b}
   EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-2048}
+  META_APP_ID: ${META_APP_ID:-}
+  META_APP_SECRET: ${META_APP_SECRET:-}
+  META_WHATSAPP_CONFIGURATION_ID: ${META_WHATSAPP_CONFIGURATION_ID:-}
+  META_WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${META_WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}
+  META_WHATSAPP_TOKEN_ENCRYPTION_KEY: ${META_WHATSAPP_TOKEN_ENCRYPTION_KEY:-}
+  META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v26.0}
+  META_GRAPH_BASE_URL: ${META_GRAPH_BASE_URL:-https://graph.facebook.com}
+  META_WEBHOOK_MAX_BYTES: ${META_WEBHOOK_MAX_BYTES:-1048576}
+  META_SIGNUP_SESSION_TTL_SECONDS: ${META_SIGNUP_SESSION_TTL_SECONDS:-600}
+  WHATSAPP_DISPATCH_MAX_ATTEMPTS: ${WHATSAPP_DISPATCH_MAX_ATTEMPTS:-8}
   REQUIRE_NVIDIA: ${REQUIRE_NVIDIA:-false}
   ALLOW_DETERMINISTIC_EMBEDDINGS: ${ALLOW_DETERMINISTIC_EMBEDDINGS:-true}
   RATE_LIMIT_FAIL_OPEN: ${RATE_LIMIT_FAIL_OPEN:-true}
@@ -103,6 +113,12 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-/api/v1}
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-false}
+        # The renderer verifies this exact public upload origin is present in
+        # WEB_CSP_EXTRA_CONNECT_SRC, failing the image build on configuration drift.
+        S3_PUBLIC_ENDPOINT_URL: "${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}"
+        # Match the no-.env S3_PUBLIC_ENDPOINT_URL/MinIO fallback above. The
+        # documented .env.example overrides both values to port 9010.
+        WEB_CSP_EXTRA_CONNECT_SRC: "${WEB_CSP_EXTRA_CONNECT_SRC:-http://localhost:9000 http://127.0.0.1:9000}"
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -149,6 +165,7 @@ services:
     networks:
       - edge
       - data
+      - egress
     security_opt:
       - no-new-privileges:true
 

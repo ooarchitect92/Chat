@@ -2,7 +2,8 @@ import { demoAgents, demoAnalytics, demoConversations, demoIntegrations, demoKno
 import { clone, readStorage, writeStorage } from '@/lib/storage';
 import type {
   Agent, AgentPatch, AnalyticsSummary, ChatStreamEvent, ChatStreamRequest, Conversation, ConversationState,
-  CreateAgentInput, Integration, KnowledgeKind, KnowledgeSource, Lead, PageResult, Session, WidgetBootstrap, WidgetSession,
+  CompleteWhatsAppSignupInput, CreateAgentInput, Integration, KnowledgeKind, KnowledgeSource, Lead, PageResult, Session,
+  WhatsAppBootstrap, WhatsAppConnection, WhatsAppStatus, WidgetBootstrap, WidgetSession,
 } from '@/types';
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api/v1';
@@ -110,8 +111,12 @@ async function request<T>(path: string, options: ApiRequestInit = {}): Promise<T
     return request<T>(path, { ...init, skipRefresh: true });
   }
   if (!response.ok) {
-    let detail: unknown;
-    try { detail = await response.json(); } catch { detail = await response.text(); }
+    let rawBody = '';
+    try { rawBody = await response.text(); } catch { /* Preserve the HTTP status even if the body stream fails. */ }
+    let detail: unknown = rawBody || undefined;
+    if (rawBody) {
+      try { detail = JSON.parse(rawBody) as unknown; } catch { /* Plain-text proxy and upstream errors remain readable. */ }
+    }
     throw new ApiError(`Request failed (${response.status})`, response.status, detail);
   }
   if (response.status === 204) return undefined as T;
@@ -287,6 +292,14 @@ export const api = {
   integrations: {
     list: () => withFallback(() => request<Integration[]>('/integrations'), async () => { await pause(); return clone(demoIntegrations); }),
     setConnected: (integrationId: string, connected: boolean) => withFallback(() => request<Integration>(`/integrations/${integrationId}`, { method: 'PATCH', body: JSON.stringify({ connected }) }), async () => { await pause(); const result = clone(demoIntegrations.find((item) => item.id === integrationId)!); result.connected = connected; return result; }),
+    whatsapp: {
+      bootstrap: () => request<WhatsAppBootstrap>('/integrations/whatsapp/bootstrap'),
+      status: () => request<WhatsAppStatus>('/integrations/whatsapp/status'),
+      complete: (input: CompleteWhatsAppSignupInput) => request<WhatsAppConnection>('/integrations/whatsapp/complete', {
+        method: 'POST', body: JSON.stringify(input),
+      }),
+      disconnect: () => request<void>('/integrations/whatsapp', { method: 'DELETE' }),
+    },
   },
   widget: {
     bootstrap: (publicId: string) => withFallback(async () => agentFromWidgetBootstrap(await request<WidgetBootstrap>(`/widget/${publicId}/bootstrap`, {

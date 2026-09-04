@@ -130,6 +130,42 @@ export interface Integration {
   comingSoon?: boolean;
 }
 
+export interface WhatsAppConnection {
+  wabaId: string;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  verifiedName: string;
+  agentId: string;
+  status: string;
+  tokenExpiresAt?: string | null;
+  connectedAt: string;
+}
+
+export interface WhatsAppBootstrap {
+  appId: string | null;
+  configurationId: string | null;
+  signupSession: string | null;
+  apiVersion: string;
+  enabled: boolean;
+  connected: boolean;
+  connection: WhatsAppConnection | null;
+}
+
+export interface WhatsAppStatus {
+  enabled: boolean;
+  connected: boolean;
+  connection: WhatsAppConnection | null;
+}
+
+export interface CompleteWhatsAppSignupInput {
+  code: string;
+  wabaId: string;
+  phoneNumberId: string;
+  agentId: string;
+  signupSession: string;
+  twoStepVerificationPin: string;
+}
+
 export interface Lead {
   id: string;
   agentId: string;

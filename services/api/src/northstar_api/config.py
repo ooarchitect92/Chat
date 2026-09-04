@@ -75,6 +75,20 @@ class Settings(BaseSettings):
     require_nvidia: bool = False
     allow_deterministic_embeddings: bool = True
 
+    # Meta WhatsApp Business Platform (Cloud API / Embedded Signup).
+    # The app secret, webhook verify token, and encryption secret must never be
+    # exposed to the browser. The browser only receives the app/config IDs.
+    meta_app_id: str | None = None
+    meta_app_secret: SecretStr | None = None
+    meta_whatsapp_configuration_id: str | None = None
+    meta_whatsapp_webhook_verify_token: SecretStr | None = None
+    meta_whatsapp_token_encryption_key: SecretStr | None = None
+    meta_graph_api_version: str = "v26.0"
+    meta_graph_base_url: str = "https://graph.facebook.com"
+    meta_webhook_max_bytes: int = Field(default=1_048_576, ge=1_024, le=10_485_760)
+    meta_signup_session_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    whatsapp_dispatch_max_attempts: int = Field(default=8, ge=1, le=100)
+
     rate_limit_fail_open: bool = True
     login_rate_limit_per_minute: int = Field(default=8, ge=1, le=10_000)
     login_global_rate_limit_per_minute: int = Field(default=120, ge=1, le=100_000)
@@ -105,6 +119,20 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator(
+        "meta_app_id",
+        "meta_app_secret",
+        "meta_whatsapp_configuration_id",
+        "meta_whatsapp_webhook_verify_token",
+        "meta_whatsapp_token_encryption_key",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_meta_configuration(cls, value: object) -> object | None:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
     @field_validator("app_api_prefix")
     @classmethod
     def normalize_prefix(cls, value: str) -> str:
@@ -116,6 +144,16 @@ class Settings(BaseSettings):
         if not 0 <= value <= 2:
             raise ValueError("NVIDIA_TEMPERATURE must be between 0 and 2")
         return value
+
+    @field_validator("meta_graph_api_version")
+    @classmethod
+    def validate_meta_graph_api_version(cls, value: str) -> str:
+        import re
+
+        normalized = value.strip()
+        if not re.fullmatch(r"v[1-9][0-9]*\.[0-9]+", normalized):
+            raise ValueError("META_GRAPH_API_VERSION must look like v26.0")
+        return normalized
 
     @model_validator(mode="after")
     def validate_production(self) -> Settings:
@@ -158,6 +196,33 @@ class Settings(BaseSettings):
             raise ValueError("SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must be provided together")
         if bool(self.s3_access_key_id) != bool(self.s3_secret_access_key):
             raise ValueError("S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY must be provided together")
+        meta_values = (
+            self.meta_app_id,
+            self.meta_app_secret,
+            self.meta_whatsapp_configuration_id,
+            self.meta_whatsapp_webhook_verify_token,
+            self.meta_whatsapp_token_encryption_key,
+        )
+        if any(meta_values) and not all(meta_values):
+            raise ValueError(
+                "WhatsApp requires META_APP_ID, META_APP_SECRET, "
+                "META_WHATSAPP_CONFIGURATION_ID, META_WHATSAPP_WEBHOOK_VERIFY_TOKEN, "
+                "and META_WHATSAPP_TOKEN_ENCRYPTION_KEY"
+            )
+        if self.meta_whatsapp_token_encryption_key:
+            encryption_secret = self.meta_whatsapp_token_encryption_key.get_secret_value()
+            if (
+                len(encryption_secret) < 32
+                or "replace-" in encryption_secret
+                or "change-me" in encryption_secret
+            ):
+                raise ValueError("META_WHATSAPP_TOKEN_ENCRYPTION_KEY must be a strong secret")
+        if self.meta_whatsapp_webhook_verify_token:
+            verify_secret = self.meta_whatsapp_webhook_verify_token.get_secret_value()
+            if len(verify_secret) < 24 or "replace-" in verify_secret or "change-me" in verify_secret:
+                raise ValueError("META_WHATSAPP_WEBHOOK_VERIFY_TOKEN must be a strong secret")
+        if self.is_production and self.meta_graph_base_url.rstrip("/") != "https://graph.facebook.com":
+            raise ValueError("Production META_GRAPH_BASE_URL must be https://graph.facebook.com")
         return self
 
     @property
@@ -171,6 +236,16 @@ class Settings(BaseSettings):
     @property
     def s3_configured(self) -> bool:
         return bool(self.s3_access_key_id and self.s3_secret_access_key)
+
+    @property
+    def whatsapp_configured(self) -> bool:
+        return bool(
+            self.meta_app_id
+            and self.meta_app_secret
+            and self.meta_whatsapp_configuration_id
+            and self.meta_whatsapp_webhook_verify_token
+            and self.meta_whatsapp_token_encryption_key
+        )
 
 
 @lru_cache

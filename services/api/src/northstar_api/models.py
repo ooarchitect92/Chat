@@ -26,7 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from northstar_api.config import get_settings
@@ -34,6 +34,7 @@ from northstar_api.database import Base
 
 JSONType = JSON().with_variant(JSONB, "postgresql")
 MutableJSON = MutableDict.as_mutable(JSONType)
+MutableListJSON = MutableList.as_mutable(JSON().with_variant(JSONB, "postgresql"))
 EMBEDDING_DIMENSION = get_settings().embedding_dimension
 
 
@@ -478,6 +479,93 @@ class IntegrationConnection(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     integration_id: Mapped[str] = mapped_column(String(80))
     connected: Mapped[bool] = mapped_column(Boolean, default=False)
     config_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary)
+
+
+class WhatsAppConnection(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """One active WhatsApp Cloud API number linked to a workspace agent."""
+
+    __tablename__ = "whatsapp_connections"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_whatsapp_connections_tenant_id"),
+        UniqueConstraint("phone_number_id", name="uq_whatsapp_connections_phone_number_id"),
+        Index("ix_whatsapp_connections_scope", "tenant_id", "agent_id"),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="RESTRICT"), index=True)
+    waba_id: Mapped[str] = mapped_column(String(80))
+    phone_number_id: Mapped[str] = mapped_column(String(80))
+    display_phone_number: Mapped[str] = mapped_column(String(80), default="")
+    verified_name: Mapped[str] = mapped_column(String(240), default="")
+    access_token_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(32), default="connected")
+    last_error: Mapped[str | None] = mapped_column(String(500))
+    connected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class WhatsAppInboundMessage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Durable webhook receipt and processing state for an inbound Meta message."""
+
+    __tablename__ = "whatsapp_inbound_messages"
+    __table_args__ = (
+        UniqueConstraint("provider_message_id", name="uq_whatsapp_inbound_provider_message_id"),
+        Index("ix_whatsapp_inbound_dispatch", "status", "next_dispatch_at"),
+        Index("ix_whatsapp_inbound_scope", "tenant_id", "connection_id", "created_at"),
+        Index("ix_whatsapp_inbound_phone_scope", "tenant_id", "phone_number_id", "created_at"),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("whatsapp_connections.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    phone_number_id: Mapped[str] = mapped_column(String(80))
+    provider_message_id: Mapped[str] = mapped_column(String(160))
+    sender_wa_id: Mapped[str] = mapped_column(String(80))
+    sender_name: Mapped[str | None] = mapped_column(String(160))
+    message_type: Mapped[str] = mapped_column(String(40))
+    message_text: Mapped[str] = mapped_column(Text)
+    provider_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    dispatch_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_dispatch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outbound_message_id: Mapped[str | None] = mapped_column(String(160))
+    outbound_message_ids: Mapped[list[str]] = mapped_column(MutableListJSON, default=list)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), index=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String(500))
+
+
+class WhatsAppOutboundDelivery(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Durable queued delivery for a human reply to a WhatsApp conversation."""
+
+    __tablename__ = "whatsapp_outbound_deliveries"
+    __table_args__ = (
+        UniqueConstraint("message_id", name="uq_whatsapp_outbound_message_id"),
+        Index("ix_whatsapp_outbound_dispatch", "status", "next_dispatch_at"),
+        Index("ix_whatsapp_outbound_scope", "tenant_id", "connection_id", "created_at"),
+        Index("ix_whatsapp_outbound_phone_scope", "tenant_id", "phone_number_id", "created_at"),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("whatsapp_connections.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    phone_number_id: Mapped[str] = mapped_column(String(80))
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    recipient_wa_id: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    dispatch_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_dispatch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_message_ids: Mapped[list[str]] = mapped_column(MutableListJSON, default=list)
+    last_error: Mapped[str | None] = mapped_column(String(500))
 
 
 class AgentHealthDaily(Base, UUIDPrimaryKeyMixin):

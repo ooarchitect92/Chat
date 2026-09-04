@@ -71,3 +71,25 @@ def test_blank_optional_seed_credentials_are_disabled() -> None:
 
     assert settings.seed_admin_email is None
     assert settings.seed_admin_password is None
+
+
+def test_blank_optional_whatsapp_configuration_is_disabled() -> None:
+    settings = Settings(
+        meta_app_id=" ",
+        meta_app_secret="",
+        meta_whatsapp_configuration_id="",
+        meta_whatsapp_webhook_verify_token=" ",  # noqa: S106
+        meta_whatsapp_token_encryption_key="",
+    )
+
+    assert not settings.whatsapp_configured
+
+
+def test_partial_whatsapp_configuration_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="WhatsApp requires"):
+        Settings(meta_app_id="123456789")
+
+
+def test_production_rejects_non_meta_graph_base_url() -> None:
+    with pytest.raises(ValidationError, match="META_GRAPH_BASE_URL"):
+        _production_settings(meta_graph_base_url="https://example.invalid")
