@@ -144,10 +144,21 @@ function Assert-PresignedUploadFlow {
         }
         $authorization = @{ Authorization = "Bearer $($login.accessToken)" }
 
-        $agents = @(Invoke-RestMethod -Method Get -Uri "$apiBase/agents" -TimeoutSec 30 -Headers $authorization)
+        $agentsResponse = Invoke-RestMethod -Method Get -Uri "$apiBase/agents" -TimeoutSec 30 -Headers $authorization
+        $agents = @($agentsResponse | ForEach-Object { $_ })
         if ($agents.Count -eq 0) {
             throw "No agent is available for the authenticated upload smoke check"
         }
+
+        $integrationsResponse = Invoke-RestMethod -Method Get -Uri "$apiBase/integrations" -TimeoutSec 30 -Headers $authorization
+        $integrations = @($integrationsResponse | ForEach-Object { $_ })
+        $requiredIntegrations = @("website", "slack", "whatsapp", "zapier", "notion", "api", "teams")
+        $integrationIds = @($integrations | ForEach-Object { $_.id })
+        $missingIntegrations = @($requiredIntegrations | Where-Object { $_ -notin $integrationIds })
+        if ($missingIntegrations.Count -gt 0) {
+            throw "Integration catalog is incomplete: $($missingIntegrations -join ', ')"
+        }
+        Write-Host ("{0,-18} populated" -f "App catalog")
 
         $fileBytes = [System.Text.Encoding]::UTF8.GetBytes("Northstar presigned POST integration smoke.")
         $sha256 = [System.Security.Cryptography.SHA256]::Create()
@@ -216,7 +227,8 @@ function Assert-PresignedUploadFlow {
 
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
         while ([DateTimeOffset]::UtcNow -lt $deadline) {
-            $sources = @(Invoke-RestMethod -Method Get -Uri "$apiBase/agents/$($agents[0].id)/knowledge" -TimeoutSec 30 -Headers $authorization)
+            $sourcesResponse = Invoke-RestMethod -Method Get -Uri "$apiBase/agents/$($agents[0].id)/knowledge" -TimeoutSec 30 -Headers $authorization
+            $sources = @($sourcesResponse | ForEach-Object { $_ })
             $current = $sources | Where-Object { [string]$_.id -eq $sourceId } | Select-Object -First 1
             if ($current.status -eq "ready") {
                 Write-Host ("{0,-18} promoted and ingested" -f "Upload flow")

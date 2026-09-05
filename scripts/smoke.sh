@@ -191,6 +191,14 @@ assert_presigned_upload_flow() {
   agent_id="$(printf '%s' "$agents_json" | docker compose exec -T api python -c \
     'import json, sys; data=json.load(sys.stdin); assert data, "no agent available for upload smoke"; print(data[0]["id"])')"
 
+  local integrations_json
+  integrations_json="$(curl --fail-with-body --silent --show-error --max-time 30 \
+    --header "Authorization: Bearer $access_token" \
+    "$api_base/integrations")"
+  printf '%s' "$integrations_json" | docker compose exec -T api python -c \
+    'import json, sys; data=json.load(sys.stdin); required={"website", "slack", "whatsapp", "zapier", "notion", "api", "teams"}; ids={item["id"] for item in data}; missing=sorted(required-ids); assert not missing, f"integration catalog is incomplete: {missing}"'
+  printf '%-18s %s\n' "App catalog" "populated"
+
   local presign_json
   presign_json="$(printf '{"filename":"infra-smoke.txt","contentType":"text/plain","sizeBytes":%s,"checksumSha256":"%s"}' "$size_bytes" "$checksum_sha256" | \
     curl --fail-with-body --silent --show-error --max-time 30 \

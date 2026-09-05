@@ -1,4 +1,4 @@
-.PHONY: bootstrap dev test lint typecheck build config up down logs ps migrate smoke smoke-powershell clean reset-data
+.PHONY: bootstrap dev test lint typecheck build config architecture up down logs ps migrate smoke smoke-powershell clean reset-data
 
 .env:
 	cp .env.example .env
@@ -29,6 +29,9 @@ build:
 
 config:
 	docker compose config --quiet
+
+architecture:
+	bash scripts/validate-architecture.sh
 
 up: .env
 	docker compose up --build -d

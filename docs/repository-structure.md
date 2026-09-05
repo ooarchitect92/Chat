@@ -20,6 +20,13 @@ compose.yaml                   local topology entrypoint
 start.bat                      Windows one-click launcher
 ```
 
+`frontend/` and `backend/` are the two application roots. There is deliberately
+no additional `apps/` wrapper. Likewise, `infrastructure/` and `kubernetes/`
+replace the ambiguous legacy roots `infra/`, `deploy/`, and root `services/`.
+The CI and release pipelines enforce this contract with
+`scripts/validate-architecture.sh` so duplicate or empty umbrella folders cannot
+silently return.
+
 ## Dependency direction
 
 1. The web application depends only on the public HTTP API contract.

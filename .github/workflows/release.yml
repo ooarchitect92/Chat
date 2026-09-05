@@ -33,6 +33,8 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
+      - name: Validate repository architecture
+        run: bash scripts/validate-architecture.sh
       - run: npm ci --no-audit --no-fund
       - run: npm run lint && npm run typecheck && npm test && npm run build
       - run: uv sync --project backend --all-groups --locked

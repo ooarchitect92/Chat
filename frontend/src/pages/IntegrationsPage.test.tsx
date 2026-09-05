@@ -90,6 +90,19 @@ describe('IntegrationsPage WhatsApp connection', () => {
 
   afterEach(cleanup);
 
+  it('shows API failures as retryable errors instead of an empty marketplace', async () => {
+    apiMocks.listIntegrations.mockRejectedValueOnce(new ApiError('Request failed (503)', 503));
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: "Couldn't load integrations" })).toBeInTheDocument();
+    expect(screen.queryByText('No integrations found')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('heading', { name: 'WhatsApp' })).toBeInTheDocument();
+    expect(apiMocks.listIntegrations).toHaveBeenCalledTimes(2);
+  });
+
   it('requires an agent and six-digit PIN, then completes Meta signup server-side', async () => {
     const user = userEvent.setup();
     renderPage();
