@@ -21,6 +21,6 @@
     "compose:logs": "docker compose logs -f --tail=200"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   }
 }

@@ -9,13 +9,14 @@ ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_DEMO_MODE=$VITE_DEMO_MODE
 RUN npm run build
 
-FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 AS runtime
+FROM nginx:1.29.5-alpine@sha256:1eff5a5f3fcf8431a0abb7eddf5471fec24e5e1905a2581aeacdb07a4479b92b AS runtime
 ARG S3_PUBLIC_ENDPOINT_URL="http://localhost:9010"
 ARG WEB_CSP_EXTRA_CONNECT_SRC="http://localhost:9010 http://127.0.0.1:9010"
 COPY nginx.conf /tmp/northstar-nginx.conf.template
 COPY render-nginx-config.sh /usr/local/bin/render-northstar-nginx
 COPY render-nginx-config.test.sh /usr/local/bin/test-northstar-nginx-renderer
-RUN chmod 0555 /usr/local/bin/render-northstar-nginx /usr/local/bin/test-northstar-nginx-renderer \
+RUN apk upgrade --no-cache \
+    && chmod 0555 /usr/local/bin/render-northstar-nginx /usr/local/bin/test-northstar-nginx-renderer \
     && /usr/local/bin/test-northstar-nginx-renderer /usr/local/bin/render-northstar-nginx /tmp/northstar-nginx.conf.template \
     && /usr/local/bin/render-northstar-nginx /tmp/northstar-nginx.conf.template /etc/nginx/conf.d/default.conf \
     && rm -f /tmp/northstar-nginx.conf.template /usr/local/bin/render-northstar-nginx /usr/local/bin/test-northstar-nginx-renderer
