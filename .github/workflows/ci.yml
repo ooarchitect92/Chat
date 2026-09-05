@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: services/api
+        working-directory: backend
     env:
       APP_ENV: test
       DATABASE_URL: sqlite+aiosqlite:///./northstar-test.db
@@ -51,7 +51,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-          cache-dependency-glob: services/api/uv.lock
+          cache-dependency-glob: backend/uv.lock
       - run: uv sync --all-groups --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -61,7 +61,7 @@ jobs:
         if: always()
         with:
           name: backend-coverage
-          path: services/api/coverage.xml
+          path: backend/coverage.xml
           if-no-files-found: ignore
           retention-days: 7
 

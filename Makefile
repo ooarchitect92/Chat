@@ -6,22 +6,22 @@
 
 bootstrap: .env
 	npm install
-	uv sync --project services/api --all-groups
+	uv sync --project backend --all-groups
 
 dev:
 	npm run dev
 
 test:
 	npm test
-	uv run --project services/api pytest -c services/api/pyproject.toml services/api/tests
+	uv run --project backend pytest -c backend/pyproject.toml backend/tests
 
 lint:
 	npm run lint
-	uv run --project services/api ruff check services/api
+	uv run --project backend ruff check backend
 
 typecheck:
 	npm run typecheck
-	uv run --project services/api mypy --config-file services/api/pyproject.toml services/api/src
+	uv run --project backend mypy --config-file backend/pyproject.toml backend/src
 
 build:
 	npm run build
@@ -47,10 +47,10 @@ migrate:
 	docker compose run --rm migrate
 
 smoke:
-	bash infra/smoke.sh
+	bash scripts/smoke.sh
 
 smoke-powershell:
-	pwsh -NoProfile -File infra/smoke.ps1
+	pwsh -NoProfile -File scripts/smoke.ps1
 
 clean:
 	docker compose down --remove-orphans

@@ -26,12 +26,12 @@
 ```bash
 docker compose config --quiet
 docker compose up --build --detach
-bash infra/smoke.sh
+bash scripts/smoke.sh
 docker compose logs --follow --tail=200 api worker job-dispatcher outbox-relay analytics-consumer object-cleaner
 docker compose down
 ```
 
-On Windows, use `./infra/smoke.ps1`. `docker compose down` preserves named volumes. `make reset-data` removes all local database, broker, and object data and is intentionally destructive.
+On Windows, use `./scripts/smoke.ps1`. `docker compose down` preserves named volumes. `make reset-data` removes all local database, broker, and object data and is intentionally destructive.
 
 ## Health semantics
 

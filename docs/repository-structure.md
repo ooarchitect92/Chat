@@ -1,21 +1,18 @@
 # Repository structure
 
 ```text
-apps/
-  web/                         React/Vite frontend and Nginx runtime
-services/
-  api/                         FastAPI domain/API and shared worker image
-    src/northstar_api/
-      routers/                 HTTP transport
-      services/                domain and provider integrations
-      workers/                 independently runnable processes
-    migrations/                Alembic database history
-deploy/
-  docker/                      Docker operator documentation
-  kubernetes/                  Kustomize manifests by workload
-infra/
-  postgres/                    local database bootstrap and roles
-  smoke.ps1, smoke.sh          local end-to-end verification
+frontend/                      React/Vite frontend and Nginx runtime
+backend/                       FastAPI domain/API and shared worker image
+  src/northstar_api/
+    routers/                   HTTP transport
+    services/                  domain and provider integrations
+    workers/                   independently runnable processes
+  migrations/                  Alembic database history
+docker/                        Docker operator documentation
+kubernetes/                    Kustomize manifests by workload
+database/postgres/             local database bootstrap and roles
+infrastructure/                Redis, RabbitMQ, Kafka, and MinIO boundaries
+scripts/                       local end-to-end verification
 docs/                          architecture, security, and operations guides
 .github/                       CI and dependency automation
 compose.yaml                   local topology entrypoint
@@ -35,7 +32,7 @@ start.bat                      Windows one-click launcher
 
 | Process | Entry point | Responsibility | Scaling |
 | --- | --- | --- | --- |
-| Web | `apps/web` | Browser control plane | Horizontal |
+| Web | `frontend` | Browser control plane | Horizontal |
 | API | `northstar_api.main:app` | HTTP API and coordination | Horizontal |
 | Migration | Alembic | PostgreSQL schema | Once per release |
 | Celery worker | `workers.celery_app` | RabbitMQ commands | Horizontal |

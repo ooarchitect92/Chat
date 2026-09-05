@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "frontend"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @northstar/web",
@@ -11,10 +11,10 @@
     "lint": "npm run lint --workspace @northstar/web",
     "test": "npm run test --workspace @northstar/web",
     "typecheck": "npm run typecheck --workspace @northstar/web",
-    "api:dev": "uv run --project services/api uvicorn northstar_api.main:app --reload --host 0.0.0.0 --port 8000",
-    "api:lint": "uv run --project services/api ruff check services/api",
-    "api:test": "uv run --project services/api pytest -c services/api/pyproject.toml services/api/tests",
-    "api:typecheck": "uv run --project services/api mypy --config-file services/api/pyproject.toml services/api/src",
+    "api:dev": "uv run --project backend uvicorn northstar_api.main:app --reload --host 0.0.0.0 --port 8000",
+    "api:lint": "uv run --project backend ruff check backend",
+    "api:test": "uv run --project backend pytest -c backend/pyproject.toml backend/tests",
+    "api:typecheck": "uv run --project backend mypy --config-file backend/pyproject.toml backend/src",
     "compose:config": "docker compose config --quiet",
     "compose:up": "docker compose up --build -d",
     "compose:down": "docker compose down",

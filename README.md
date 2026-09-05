@@ -26,7 +26,7 @@ Never commit `.env`, credentials, exported customer data, or browser-audit artif
 
 ## Repository map
 
-Frontend applications, backend services, infrastructure support, Docker guidance, and Kubernetes resources have explicit directory boundaries. Start with [the repository structure guide](docs/repository-structure.md); deployment resources live under [`deploy/`](deploy/).
+Frontend, backend, databases, scripts, Docker guidance, and Kubernetes resources have explicit top-level boundaries. Start with [the repository structure guide](docs/repository-structure.md).
 
 ## Quick start
 
@@ -56,7 +56,7 @@ On PowerShell:
 ```powershell
 Copy-Item .env.example .env
 docker compose up --build --detach
-./infra/smoke.ps1
+./scripts/smoke.ps1
 ```
 
 Before sharing the environment or connecting real data, edit `.env` and replace every `replace-...`/`change-me-...` value. Add a newly rotated `NVIDIA_API_KEY` to enable live model responses.
@@ -186,9 +186,13 @@ make reset-data          # destructive: also remove named data volumes
 ## Repository layout
 
 ```text
-apps/web/              React + TypeScript administration UI and widget preview
-services/api/          FastAPI API, persistence, model/RAG services, and workers
-infra/                 Database initialization and smoke checks
+frontend/              React + TypeScript administration UI and widget preview
+backend/               FastAPI API, persistence, model/RAG services, and workers
+database/              PostgreSQL initialization and versioned database assets
+infrastructure/        Redis, RabbitMQ, Kafka, and MinIO service boundaries
+docker/                Docker operator documentation
+kubernetes/            Kubernetes workloads and Kustomize configuration
+scripts/               Local smoke and verification scripts
 docs/                  Architecture, API, security, and operational guidance
 .github/                CI and dependency-update automation
 compose.yaml            Complete local service topology

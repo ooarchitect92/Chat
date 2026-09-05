@@ -1,7 +1,7 @@
 name: ${COMPOSE_PROJECT_NAME:-northstar-ai}
 
 x-api-build: &api-build
-  context: ./services/api
+  context: ./backend
   dockerfile: Dockerfile
 
 x-api-environment: &api-environment
@@ -108,7 +108,7 @@ services:
   web:
     image: northstar/web:${IMAGE_TAG:-local}
     build:
-      context: ./apps/web
+      context: ./frontend
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-/api/v1}
@@ -326,8 +326,8 @@ services:
       - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-extensions.sql:ro
-      - ./infra/postgres/002-runtime-roles.sh:/docker-entrypoint-initdb.d/002-runtime-roles.sh:ro
+      - ./database/postgres/init.sql:/docker-entrypoint-initdb.d/001-extensions.sql:ro
+      - ./database/postgres/002-runtime-roles.sh:/docker-entrypoint-initdb.d/002-runtime-roles.sh:ro
     shm_size: 256mb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
