@@ -229,6 +229,7 @@ describe('api client', () => {
   });
 
   it('uploads files with constrained presigned POST fields before creating knowledge', async () => {
+    vi.spyOn(crypto.subtle, 'digest').mockResolvedValue(new Uint8Array(32).buffer);
     const source = {
       id: 'source-1', agentId: 'agent-1', name: 'guide.pdf', kind: 'file' as const, status: 'processing' as const,
       sizeLabel: '1 KB', chunks: 0, updatedAt: '2026-09-04T00:00:00Z',
@@ -245,6 +246,12 @@ describe('api client', () => {
 
     await expect(api.knowledge.add('agent-1', { name: 'guide.pdf', kind: 'file', file })).resolves.toEqual(source);
 
+    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toMatchObject({
+      filename: 'guide.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 3,
+      checksumSha256: '0'.repeat(64),
+    });
     const uploadInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
     expect(fetchMock.mock.calls[1]?.[0]).toBe('https://uploads.example.test/');
     expect(uploadInit.method).toBe('POST');
