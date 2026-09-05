@@ -18,6 +18,7 @@ Never commit `.env`, credentials, exported customer data, or browser-audit artif
 - A customizable website widget with a lazy, origin-checked parent/iframe handshake, a separate first-party hosted page, and launcher, color, typography, greeting, suggested-question, placement, privacy, and branding settings.
 - Operational dashboard, conversation analytics, knowledge health, and integration management.
 - Meta WhatsApp Cloud API integration with Embedded Signup v4, existing/new phone-number selection, encrypted customer tokens, signed/idempotent webhooks, and queued AI and human replies.
+- Project configuration for Meta's official Social Technologies MCP developer workflows, including app audits, webhook diagnostics, App Review, compliance, API health, documentation search, and token diagnosis. See [the MCP guide](docs/meta-devtools-mcp.md).
 - Tenant-scoped authentication and authorization with short-lived access tokens, production HttpOnly refresh cookies, and Redis-backed one-time refresh-token families that revoke on reuse.
 - Durable background work through RabbitMQ/Celery, replayable domain events through Kafka, and Redis-backed coordination.
 - Transactional outbox delivery so database commits and published analytics events do not silently diverge.
