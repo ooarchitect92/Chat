@@ -8,6 +8,8 @@ spec:
     metadata: {labels: {app: northstar-worker, app.kubernetes.io/part-of: northstar}}
     spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001}
+      topologySpreadConstraints:
+        - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: {matchLabels: {app: northstar-worker}}}
       containers:
         - name: worker
           image: northstar/api:replace-with-immutable-tag

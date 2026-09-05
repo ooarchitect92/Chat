@@ -7,10 +7,13 @@ spec:
   template:
     metadata: {labels: {app: northstar-web, app.kubernetes.io/part-of: northstar}}
     spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101}
+      topologySpreadConstraints:
+        - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app: northstar-web}}}
       containers:
         - name: web
           image: northstar/web:replace-with-immutable-tag
-          ports: [{name: http, containerPort: 80}]
+          ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20}
           resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}

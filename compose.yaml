@@ -103,6 +103,9 @@ x-api-runtime: &api-runtime
   read_only: true
   tmpfs:
     - /tmp:size=256m,mode=1777
+  cap_drop:
+    - ALL
+  pids_limit: 512
 
 services:
   web:
@@ -116,22 +119,22 @@ services:
         # The renderer verifies this exact public upload origin is present in
         # WEB_CSP_EXTRA_CONNECT_SRC, failing the image build on configuration drift.
         S3_PUBLIC_ENDPOINT_URL: "${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}"
-        # Match the no-.env S3_PUBLIC_ENDPOINT_URL/MinIO fallback above. The
-        # documented .env.example overrides both values to port 9010.
-        WEB_CSP_EXTRA_CONNECT_SRC: "${WEB_CSP_EXTRA_CONNECT_SRC:-http://localhost:9000 http://127.0.0.1:9000}"
+        # Cover the documented local port and the no-.env fallback. Custom
+        # object-store origins must set WEB_CSP_EXTRA_CONNECT_SRC explicitly.
+        WEB_CSP_EXTRA_CONNECT_SRC: "${WEB_CSP_EXTRA_CONNECT_SRC:-http://localhost:9000 http://127.0.0.1:9000 http://localhost:9010 http://127.0.0.1:9010}"
     restart: unless-stopped
     read_only: true
     tmpfs:
-      - /var/cache/nginx:size=32m,mode=0755
-      - /var/run:size=4m,mode=0755
+      - /var/cache/nginx:size=32m,mode=0770,uid=101,gid=101
+      - /var/run:size=4m,mode=0770,uid=101,gid=101
       - /tmp:size=16m,mode=1777
     ports:
-      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:80"
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:8080"
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 15s
       timeout: 3s
       retries: 5
@@ -141,6 +144,9 @@ services:
     logging: *json-logging
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
 
   api:
     <<: *api-runtime
@@ -311,7 +317,7 @@ services:
       - no-new-privileges:true
 
   postgres:
-    image: pgvector/pgvector:0.8.0-pg16
+    image: pgvector/pgvector:0.8.0-pg16@sha256:a132765ec351c65111b5b675928a3a0515a466a40f97277329db8b8209ad8bc9
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-northstar}
@@ -343,7 +349,7 @@ services:
       - no-new-privileges:true
 
   redis:
-    image: redis:7.4.2-alpine
+    image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
     restart: unless-stopped
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-replace-local-redis-password}
@@ -369,7 +375,7 @@ services:
       - no-new-privileges:true
 
   rabbitmq:
-    image: rabbitmq:4.0.5-management-alpine
+    image: rabbitmq:4.0.5-management-alpine@sha256:54759523c0b09074814b1233e6985babe9fd34e3462d2fea522361cb83b2fd76
     hostname: rabbitmq
     restart: unless-stopped
     environment:
@@ -395,7 +401,7 @@ services:
       - no-new-privileges:true
 
   kafka:
-    image: apache/kafka:3.9.2
+    image: apache/kafka:3.9.2@sha256:05b4616e0702ef2729327705d54ad6b50ea70b271c4b730fabd2320789fb7b02
     hostname: kafka
     restart: unless-stopped
     environment:
@@ -435,7 +441,7 @@ services:
       - no-new-privileges:true
 
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -462,7 +468,7 @@ services:
       - no-new-privileges:true
 
   minio-init:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z@sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3
     restart: "no"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-northstar}

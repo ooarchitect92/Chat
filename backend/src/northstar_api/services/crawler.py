@@ -13,9 +13,7 @@ from playwright.sync_api import sync_playwright
 MAX_PAGES = 300
 REQUEST_TIMEOUT = 15
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; NEXORA-Bot/1.0)"
-}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NEXORA-Bot/1.0)"}
 
 
 class CrawledPage(TypedDict):
@@ -106,11 +104,7 @@ def crawl_page(url: str) -> CrawledPage:
     for tag in soup(["script", "style", "noscript", "iframe"]):
         tag.decompose()
 
-    title = (
-        soup.title.get_text(strip=True)
-        if soup.title
-        else ""
-    )
+    title = soup.title.get_text(strip=True) if soup.title else ""
 
     # Extract visible text.
     raw_lines = soup.get_text(
@@ -160,10 +154,7 @@ def discover_sitemap(base_url: str) -> list[str]:
     """
     parsed = urlparse(base_url)
 
-    sitemap_url = (
-        f"{parsed.scheme}://"
-        f"{parsed.netloc}/sitemap.xml"
-    )
+    sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
 
     try:
         response = requests.get(
@@ -185,10 +176,7 @@ def discover_sitemap(base_url: str) -> list[str]:
         for loc in soup.find_all("loc"):
             url = loc.get_text(strip=True)
 
-            if (
-                is_valid_page_url(url)
-                and is_same_domain(base_url, url)
-            ):
+            if is_valid_page_url(url) and is_same_domain(base_url, url):
                 urls.append(normalize_url(url))
 
         return list(dict.fromkeys(urls))
@@ -216,9 +204,7 @@ def crawl_website(
     sitemap_urls = discover_sitemap(start_url)
 
     if sitemap_urls:
-        print(
-            f"Sitemap discovered {len(sitemap_urls)} URLs."
-        )
+        print(f"Sitemap discovered {len(sitemap_urls)} URLs.")
 
         for url in sitemap_urls:
             if len(queue) >= max_pages:
@@ -228,10 +214,7 @@ def crawl_website(
                 queue.append(url)
 
     else:
-        print(
-            "No sitemap found. "
-            "Using link discovery."
-        )
+        print("No sitemap found. Using link discovery.")
 
     while queue and len(pages) < max_pages:
         current_url = queue.pop(0)
@@ -250,10 +233,7 @@ def crawl_website(
         if not is_valid_page_url(current_url):
             continue
 
-        print(
-            f"[{len(pages) + 1}/{max_pages}] "
-            f"Crawling: {current_url}"
-        )
+        print(f"[{len(pages) + 1}/{max_pages}] Crawling: {current_url}")
 
         try:
             page = crawl_page(current_url)
@@ -277,17 +257,11 @@ def crawl_website(
                     queue.append(link)
 
         except Exception as error:
-            print(
-                f"FAILED: {current_url}"
-            )
-            print(
-                f"ERROR: {error}"
-            )
+            print(f"FAILED: {current_url}")
+            print(f"ERROR: {error}")
 
     print("\nCrawling completed.")
-    print(
-        f"Pages successfully crawled: {len(pages)}"
-    )
+    print(f"Pages successfully crawled: {len(pages)}")
 
     return pages
 

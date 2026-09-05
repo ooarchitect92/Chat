@@ -10,6 +10,7 @@ backend/                       FastAPI domain/API and shared worker image
   migrations/                  Alembic database history
 docker/                        Docker operator documentation
 kubernetes/                    Kustomize manifests by workload
+  overlays/production/         public ingress and environment replacements
 database/postgres/             local database bootstrap and roles
 infrastructure/                Redis, RabbitMQ, Kafka, and MinIO boundaries
 scripts/                       local end-to-end verification

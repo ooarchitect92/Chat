@@ -208,8 +208,7 @@ async def _materialize_text(source: KnowledgeSource) -> str:
 
                         if vision_text.strip():
                             pages.append(
-                                f"VISUAL CONTENT FROM PDF PAGE {page_number + 1}:\n"
-                                f"{vision_text.strip()}"
+                                f"VISUAL CONTENT FROM PDF PAGE {page_number + 1}:\n{vision_text.strip()}"
                             )
 
                     pdf.close()
@@ -245,9 +244,7 @@ async def _materialize_text(source: KnowledgeSource) -> str:
 
             # Existing paragraph extraction
             paragraphs = [
-                paragraph.text.strip()
-                for paragraph in document.paragraphs
-                if paragraph.text.strip()
+                paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()
             ]
 
             if paragraphs:
@@ -260,10 +257,7 @@ async def _materialize_text(source: KnowledgeSource) -> str:
                 rows: list[str] = []
 
                 for row in table.rows:
-                    cells = [
-                        cell.text.strip()
-                        for cell in row.cells
-                    ]
+                    cells = [cell.text.strip() for cell in row.cells]
 
                     if any(cells):
                         rows.append(" | ".join(cells))
@@ -272,10 +266,7 @@ async def _materialize_text(source: KnowledgeSource) -> str:
                     tables.append("\n".join(rows))
 
             if tables:
-                sections.append(
-                    "TABLE CONTENT FROM DOCX:\n\n"
-                    + "\n\n".join(tables)
-                )
+                sections.append("TABLE CONTENT FROM DOCX:\n\n" + "\n\n".join(tables))
 
             # NEXORA Vision extraction for embedded images
             try:
@@ -293,10 +284,7 @@ async def _materialize_text(source: KnowledgeSource) -> str:
                         ):
                             suffix = Path(member.filename).suffix or ".png"
 
-                            image_path = (
-                                Path(temp_dir)
-                                / f"docx_image_{image_number:03d}{suffix}"
-                            )
+                            image_path = Path(temp_dir) / f"docx_image_{image_number:03d}{suffix}"
 
                             with archive.open(member) as source_file:
                                 image_path.write_bytes(source_file.read())
@@ -308,9 +296,7 @@ async def _materialize_text(source: KnowledgeSource) -> str:
 
                             if vision_text.strip():
                                 sections.append(
-                                    f"VISUAL CONTENT FROM DOCX IMAGE "
-                                    f"{image_number}:\n"
-                                    f"{vision_text.strip()}"
+                                    f"VISUAL CONTENT FROM DOCX IMAGE {image_number}:\n{vision_text.strip()}"
                                 )
 
             except Exception as exc:
@@ -326,6 +312,7 @@ async def _materialize_text(source: KnowledgeSource) -> str:
         raise ValueError("Uploaded file type is not supported")
     return ""
 
+
 async def _materialize_webpage_with_vision(source: KnowledgeSource) -> str:
     """
     Crawl a website, extract normal HTML text, take screenshots,
@@ -336,7 +323,6 @@ async def _materialize_webpage_with_vision(source: KnowledgeSource) -> str:
 
     settings = get_settings()
 
-    
     initial_text, final_url = await fetch_public_text(source.url)
     source.url = final_url
 
@@ -383,9 +369,7 @@ async def _materialize_webpage_with_vision(source: KnowledgeSource) -> str:
             )
 
             if vision_text.strip():
-                section_parts.append(
-                    f"VISUAL CONTENT FROM WEB PAGE:\n{vision_text.strip()}"
-                )
+                section_parts.append(f"VISUAL CONTENT FROM WEB PAGE:\n{vision_text.strip()}")
 
         except Exception as exc:
             logger.warning(
@@ -396,18 +380,16 @@ async def _materialize_webpage_with_vision(source: KnowledgeSource) -> str:
             )
 
         if section_parts:
-            sections.append(
-                f"Source page: {page_url}\n\n"
-                + "\n\n".join(section_parts)
-            )
+            sections.append(f"Source page: {page_url}\n\n" + "\n\n".join(section_parts))
 
     if not sections:
         return initial_text.strip()
 
     combined = "\n\n---\n\n".join(sections)
 
-    
     return combined[: settings.knowledge_max_extracted_characters].strip()
+
+
 async def _materialize_sitemap(source: KnowledgeSource) -> str:
     assert source.url is not None
     settings = get_settings()

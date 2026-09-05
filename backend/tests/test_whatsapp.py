@@ -508,9 +508,7 @@ async def test_workspace_can_manage_one_dedicated_number_per_bot(
         str(agent_ids[1]),
     }
 
-    disconnected = await client.delete(
-        f"/api/v1/integrations/whatsapp/{agent_ids[0]}", headers=auth_headers
-    )
+    disconnected = await client.delete(f"/api/v1/integrations/whatsapp/{agent_ids[0]}", headers=auth_headers)
     assert disconnected.status_code == 204, disconnected.text
     remaining = await client.get("/api/v1/integrations/whatsapp/status", headers=auth_headers)
     assert remaining.json()["connected"] is True

@@ -1,0 +1,20 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: northstar-api, namespace: northstar}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: northstar-api}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: northstar-web, namespace: northstar}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: northstar-web}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: northstar-worker, namespace: northstar}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: northstar-worker}}

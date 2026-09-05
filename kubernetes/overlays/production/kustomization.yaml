@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - ingress.yaml
+patches:
+  - path: production-config.yaml
+
+# Deployment automation must replace both tags with the exact release SHA or
+# digest produced by .github/workflows/release.yml before applying this overlay.
+images:
+  - name: northstar/api
+    newName: ghcr.io/ooarchitect92/northstar-api
+    newTag: replace-with-release-sha
+  - name: northstar/web
+    newName: ghcr.io/ooarchitect92/northstar-web
+    newTag: replace-with-release-sha

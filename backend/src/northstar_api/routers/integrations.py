@@ -153,10 +153,10 @@ async def integration_list(session: AsyncSession, tenant_id: UUID) -> list[Integ
     }
     whatsapp_connections = list(
         await session.scalars(
-        select(WhatsAppConnection).where(
-            WhatsAppConnection.tenant_id == tenant_id,
-            WhatsAppConnection.status == "connected",
-        )
+            select(WhatsAppConnection).where(
+                WhatsAppConnection.tenant_id == tenant_id,
+                WhatsAppConnection.status == "connected",
+            )
         )
     )
     states["whatsapp"] = any(_token_is_current(item) for item in whatsapp_connections)
@@ -349,9 +349,7 @@ async def complete_whatsapp_signup(
             )
         )
     phone_connection = await session.scalar(
-        select(WhatsAppConnection).where(
-            WhatsAppConnection.phone_number_id == payload.phone_number_id
-        )
+        select(WhatsAppConnection).where(WhatsAppConnection.phone_number_id == payload.phone_number_id)
     )
     if phone_owner is not None and UUID(str(phone_owner)) != principal.tenant_id:
         raise HTTPException(
@@ -502,9 +500,7 @@ async def disconnect_single_whatsapp(principal: AdminPrincipal, session: DB) -> 
 
     agent_ids = list(
         await session.scalars(
-            select(WhatsAppConnection.agent_id).where(
-                WhatsAppConnection.tenant_id == principal.tenant_id
-            )
+            select(WhatsAppConnection.agent_id).where(WhatsAppConnection.tenant_id == principal.tenant_id)
         )
     )
     if not agent_ids:

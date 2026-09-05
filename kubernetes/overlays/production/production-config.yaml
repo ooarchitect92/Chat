@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: northstar-config
+  namespace: northstar
+data:
+  APP_CORS_ORIGINS: '["https://app.example.com"]'
+  S3_ENDPOINT_URL: https://objects.example.com
+  S3_PUBLIC_ENDPOINT_URL: https://objects.example.com
+  KAFKA_BOOTSTRAP_SERVERS: kafka.example.com:9093

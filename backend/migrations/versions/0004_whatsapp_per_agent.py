@@ -26,14 +26,10 @@ def upgrade() -> None:
         with op.batch_alter_table("whatsapp_connections") as batch:
             if "uq_whatsapp_connections_tenant_id" in constraints:
                 batch.drop_constraint("uq_whatsapp_connections_tenant_id", type_="unique")
-            batch.create_unique_constraint(
-                "uq_whatsapp_connections_tenant_agent", ["tenant_id", "agent_id"]
-            )
+            batch.create_unique_constraint("uq_whatsapp_connections_tenant_agent", ["tenant_id", "agent_id"])
         return
     if "uq_whatsapp_connections_tenant_id" in constraints:
-        op.drop_constraint(
-            "uq_whatsapp_connections_tenant_id", "whatsapp_connections", type_="unique"
-        )
+        op.drop_constraint("uq_whatsapp_connections_tenant_id", "whatsapp_connections", type_="unique")
     op.create_unique_constraint(
         "uq_whatsapp_connections_tenant_agent",
         "whatsapp_connections",
@@ -54,9 +50,5 @@ def downgrade() -> None:
             batch.drop_constraint("uq_whatsapp_connections_tenant_agent", type_="unique")
             batch.create_unique_constraint("uq_whatsapp_connections_tenant_id", ["tenant_id"])
         return
-    op.drop_constraint(
-        "uq_whatsapp_connections_tenant_agent", "whatsapp_connections", type_="unique"
-    )
-    op.create_unique_constraint(
-        "uq_whatsapp_connections_tenant_id", "whatsapp_connections", ["tenant_id"]
-    )
+    op.drop_constraint("uq_whatsapp_connections_tenant_agent", "whatsapp_connections", type_="unique")
+    op.create_unique_constraint("uq_whatsapp_connections_tenant_id", "whatsapp_connections", ["tenant_id"])

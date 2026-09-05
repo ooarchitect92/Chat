@@ -1,0 +1,12 @@
+# Default ownership
+* @ooarchitect92
+
+# Security-sensitive and release-critical boundaries
+/.github/ @ooarchitect92
+/backend/src/northstar_api/security.py @ooarchitect92
+/backend/src/northstar_api/routers/auth.py @ooarchitect92
+/backend/src/northstar_api/routers/whatsapp.py @ooarchitect92
+/backend/migrations/ @ooarchitect92
+/docker/ @ooarchitect92
+/kubernetes/ @ooarchitect92
+/compose.yaml @ooarchitect92

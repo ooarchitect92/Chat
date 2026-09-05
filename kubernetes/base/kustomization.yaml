@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
+  - service-account.yaml
   - configmap.yaml
   - migration.yaml
   - api.yaml
@@ -11,3 +12,45 @@ resources:
   - outbox-relay.yaml
   - analytics-consumer.yaml
   - object-cleaner.yaml
+  - availability.yaml
+  - autoscaling.yaml
+  - network-policies.yaml
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/revisionHistoryLimit
+        value: 3
+      - op: add
+        path: /spec/progressDeadlineSeconds
+        value: 600
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: northstar-workload
+      - op: add
+        path: /spec/template/spec/automountServiceAccountToken
+        value: false
+      - op: add
+        path: /spec/template/spec/enableServiceLinks
+        value: false
+      - op: add
+        path: /spec/template/spec/terminationGracePeriodSeconds
+        value: 60
+      - op: add
+        path: /spec/template/spec/securityContext/seccompProfile
+        value: {type: RuntimeDefault}
+  - target:
+      kind: Deployment
+      name: northstar-(api|web|worker|analytics-consumer|object-cleaner)
+    patch: |-
+      - op: add
+        path: /spec/strategy
+        value: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  - target:
+      kind: Deployment
+      name: northstar-(job-dispatcher|outbox-relay)
+    patch: |-
+      - op: add
+        path: /spec/strategy
+        value: {type: Recreate}
