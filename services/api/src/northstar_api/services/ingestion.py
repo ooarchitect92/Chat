@@ -6,7 +6,11 @@ import html
 import io
 import re
 import zipfile
+import tempfile
+from pathlib import Path
 from urllib.parse import urlparse
+
+import fitz
 from uuid import UUID
 
 import structlog
@@ -25,6 +29,8 @@ from northstar_api.models import (
     KnowledgeStatus,
 )
 from northstar_api.services.llm import nvidia_adapter
+from northstar_api.services.vision import extract_vision_text
+from northstar_api.services.crawler import crawl_website, take_screenshot
 from northstar_api.services.object_store import object_store
 from northstar_api.services.outbox import enqueue_event
 from northstar_api.services.safe_fetch import fetch_public_text
@@ -150,6 +156,10 @@ async def _materialize_text(source: KnowledgeSource) -> str:
     if source.url:
         if source.kind == KnowledgeKind.SITEMAP:
             return await _materialize_sitemap(source)
+
+        if source.kind == KnowledgeKind.URL:
+            return await _materialize_webpage_with_vision(source)
+
         text, final_url = await fetch_public_text(source.url)
         source.url = final_url
         return text.strip()
@@ -159,37 +169,246 @@ async def _materialize_text(source: KnowledgeSource) -> str:
         if content_type == "application/pdf" or source.name.lower().endswith(".pdf"):
             reader = PdfReader(io.BytesIO(data))
             settings = get_settings()
+
             if len(reader.pages) > settings.knowledge_max_pdf_pages:
                 raise ValueError("PDF exceeds the configured page limit")
+
             pages: list[str] = []
+
+            # Existing PDF text extraction
             extracted_characters = 0
             for page in reader.pages:
                 text = page.extract_text() or ""
                 extracted_characters += len(text)
+
                 if extracted_characters > settings.knowledge_max_extracted_characters:
                     raise ValueError("PDF text exceeds the configured extraction limit")
-                pages.append(text)
+
+                if text.strip():
+                    pages.append(text.strip())
+
+            # NEXORA Vision extraction
+            try:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    pdf = fitz.open(stream=data, filetype="pdf")
+
+                    for page_number in range(len(pdf)):
+                        page = pdf[page_number]
+
+                        # Render PDF page as PNG
+                        pixmap = page.get_pixmap(
+                            matrix=fitz.Matrix(2, 2),
+                            alpha=False,
+                        )
+
+                        image_path = Path(temp_dir) / f"vision_page_{page_number + 1:03d}.png"
+                        pixmap.save(str(image_path))
+
+                        # Extract visible text using Vision LLM
+                        vision_text = extract_vision_text(str(image_path))
+
+                        if vision_text.strip():
+                            pages.append(
+                                f"VISUAL CONTENT FROM PDF PAGE {page_number + 1}:\n"
+                                f"{vision_text.strip()}"
+                            )
+
+                    pdf.close()
+
+            except Exception as exc:
+                logger.warning(
+                    "pdf_vision_extraction_failed",
+                    source_id=str(source.id),
+                    error=type(exc).__name__,
+                )
+
             return "\n\n".join(pages).strip()
         if "wordprocessingml.document" in content_type or source.name.lower().endswith(".docx"):
             settings = get_settings()
+
             try:
                 with zipfile.ZipFile(io.BytesIO(data)) as archive:
                     members = archive.infolist()
                     expanded_size = sum(member.file_size for member in members)
+
                     if len(members) > 5_000:
                         raise ValueError("DOCX contains too many archive members")
+
                     if expanded_size > settings.knowledge_max_docx_uncompressed_bytes:
                         raise ValueError("DOCX exceeds the configured expanded-size limit")
+
             except zipfile.BadZipFile as exc:
                 raise ValueError("DOCX archive is invalid") from exc
+
             document = Document(io.BytesIO(data))
-            return "\n\n".join(paragraph.text for paragraph in document.paragraphs).strip()
+
+            sections: list[str] = []
+
+            # Existing paragraph extraction
+            paragraphs = [
+                paragraph.text.strip()
+                for paragraph in document.paragraphs
+                if paragraph.text.strip()
+            ]
+
+            if paragraphs:
+                sections.append("\n\n".join(paragraphs))
+
+            # Existing document tables + structured table text
+            tables: list[str] = []
+
+            for table in document.tables:
+                rows: list[str] = []
+
+                for row in table.rows:
+                    cells = [
+                        cell.text.strip()
+                        for cell in row.cells
+                    ]
+
+                    if any(cells):
+                        rows.append(" | ".join(cells))
+
+                if rows:
+                    tables.append("\n".join(rows))
+
+            if tables:
+                sections.append(
+                    "TABLE CONTENT FROM DOCX:\n\n"
+                    + "\n\n".join(tables)
+                )
+
+            # NEXORA Vision extraction for embedded images
+            try:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                        image_members = [
+                            member
+                            for member in archive.infolist()
+                            if member.filename.startswith("word/media/")
+                        ]
+
+                        for image_number, member in enumerate(
+                            image_members,
+                            start=1,
+                        ):
+                            suffix = Path(member.filename).suffix or ".png"
+
+                            image_path = (
+                                Path(temp_dir)
+                                / f"docx_image_{image_number:03d}{suffix}"
+                            )
+
+                            with archive.open(member) as source_file:
+                                image_path.write_bytes(source_file.read())
+
+                            vision_text = await asyncio.to_thread(
+                                extract_vision_text,
+                                str(image_path),
+                            )
+
+                            if vision_text.strip():
+                                sections.append(
+                                    f"VISUAL CONTENT FROM DOCX IMAGE "
+                                    f"{image_number}:\n"
+                                    f"{vision_text.strip()}"
+                                )
+
+            except Exception as exc:
+                logger.warning(
+                    "docx_vision_extraction_failed",
+                    source_id=str(source.id),
+                    error=type(exc).__name__,
+                )
+
+            return "\n\n".join(sections).strip()
         if content_type.startswith("text/") or source.name.lower().endswith((".txt", ".md")):
             return data.decode("utf-8", errors="replace").strip()
         raise ValueError("Uploaded file type is not supported")
     return ""
 
+async def _materialize_webpage_with_vision(source: KnowledgeSource) -> str:
+    """
+    Crawl a website, extract normal HTML text, take screenshots,
+    and add NEXORA Vision text before the existing Northstar
+    chunking and embedding pipeline.
+    """
+    assert source.url is not None
 
+    settings = get_settings()
+
+    
+    initial_text, final_url = await fetch_public_text(source.url)
+    source.url = final_url
+
+    try:
+        # Run the NEXORA crawler without blocking the async ingestion loop.
+        pages = await asyncio.to_thread(
+            crawl_website,
+            final_url,
+            10,
+        )
+    except Exception as exc:
+        logger.warning(
+            "website_crawl_failed",
+            source_id=str(source.id),
+            error=type(exc).__name__,
+        )
+        return initial_text.strip()
+
+    sections: list[str] = []
+
+    for page_number, page in enumerate(pages, start=1):
+        page_url = str(page.get("url") or "")
+        page_text = str(page.get("text") or "").strip()
+
+        if not page_url:
+            continue
+
+        section_parts: list[str] = []
+
+        if page_text:
+            section_parts.append(page_text)
+
+        # NEXORA screenshot + Vision extraction.
+        try:
+            screenshot_path = await asyncio.to_thread(
+                take_screenshot,
+                page_url,
+                f"web_{source.id}_{page_number:03d}.png",
+            )
+
+            vision_text = await asyncio.to_thread(
+                extract_vision_text,
+                screenshot_path,
+            )
+
+            if vision_text.strip():
+                section_parts.append(
+                    f"VISUAL CONTENT FROM WEB PAGE:\n{vision_text.strip()}"
+                )
+
+        except Exception as exc:
+            logger.warning(
+                "website_vision_extraction_failed",
+                source_id=str(source.id),
+                page_url=page_url,
+                error=type(exc).__name__,
+            )
+
+        if section_parts:
+            sections.append(
+                f"Source page: {page_url}\n\n"
+                + "\n\n".join(section_parts)
+            )
+
+    if not sections:
+        return initial_text.strip()
+
+    combined = "\n\n---\n\n".join(sections)
+
+    
+    return combined[: settings.knowledge_max_extracted_characters].strip()
 async def _materialize_sitemap(source: KnowledgeSource) -> str:
     assert source.url is not None
     settings = get_settings()
