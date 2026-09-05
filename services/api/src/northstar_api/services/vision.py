@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 
 from openai import OpenAI
 
 from northstar_api.config import get_settings
-
 
 VISION_MODEL = "meta/llama-3.2-11b-vision-instruct"
 

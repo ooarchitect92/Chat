@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
+from typing import TypedDict
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
-
 
 MAX_PAGES = 300
 REQUEST_TIMEOUT = 15
@@ -15,6 +16,13 @@ REQUEST_TIMEOUT = 15
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; NEXORA-Bot/1.0)"
 }
+
+
+class CrawledPage(TypedDict):
+    url: str
+    title: str
+    text: str
+    links: list[str]
 
 
 def normalize_url(url: str) -> str:
@@ -76,7 +84,7 @@ def is_valid_page_url(url: str) -> bool:
     return True
 
 
-def crawl_page(url: str) -> dict:
+def crawl_page(url: str) -> CrawledPage:
     """
     Download one webpage and extract:
     - URL
@@ -127,7 +135,7 @@ def crawl_page(url: str) -> dict:
     links: list[str] = []
 
     for link in soup.find_all("a", href=True):
-        href = link["href"]
+        href = str(link["href"])
 
         full_url = urljoin(url, href)
         full_url = normalize_url(full_url)
@@ -193,7 +201,7 @@ def discover_sitemap(base_url: str) -> list[str]:
 def crawl_website(
     start_url: str,
     max_pages: int = MAX_PAGES,
-) -> list[dict]:
+) -> list[CrawledPage]:
     """
     Crawl a website using:
     1. sitemap discovery when available
@@ -203,7 +211,7 @@ def crawl_website(
 
     visited: set[str] = set()
     queue: list[str] = [start_url]
-    pages: list[dict] = []
+    pages: list[CrawledPage] = []
 
     sitemap_urls = discover_sitemap(start_url)
 
@@ -285,7 +293,7 @@ def crawl_website(
 
 
 def save_pages(
-    pages: list[dict],
+    pages: list[CrawledPage],
     filename: str = "website.json",
 ) -> str:
     """Save crawled pages to data/raw."""
@@ -320,7 +328,7 @@ def take_screenshot(
     Render a webpage with Playwright and save
     a full-page PNG screenshot.
     """
-    output_dir = Path("/tmp/northstar_screenshots")
+    output_dir = Path(tempfile.gettempdir()) / "northstar_screenshots"
 
     output_dir.mkdir(
         parents=True,

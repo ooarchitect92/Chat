@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - migration.yaml
+  - api.yaml
+  - web.yaml
+  - worker.yaml
+  - job-dispatcher.yaml
+  - outbox-relay.yaml
+  - analytics-consumer.yaml
+  - object-cleaner.yaml

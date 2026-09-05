@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: northstar-web, namespace: northstar}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: northstar-web}}
+  template:
+    metadata: {labels: {app: northstar-web, app.kubernetes.io/part-of: northstar}}
+    spec:
+      containers:
+        - name: web
+          image: northstar/web:replace-with-immutable-tag
+          ports: [{name: http, containerPort: 80}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20}
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: cache, mountPath: /var/cache/nginx}, {name: run, mountPath: /var/run}, {name: tmp, mountPath: /tmp}]
+      volumes: [{name: cache, emptyDir: {}}, {name: run, emptyDir: {}}, {name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: northstar-web, namespace: northstar}
+spec:
+  selector: {app: northstar-web}
+  ports: [{name: http, port: 80, targetPort: http}]

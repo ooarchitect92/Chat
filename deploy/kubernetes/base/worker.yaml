@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: northstar-worker, namespace: northstar}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: northstar-worker}}
+  template:
+    metadata: {labels: {app: northstar-worker, app.kubernetes.io/part-of: northstar}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001}
+      containers:
+        - name: worker
+          image: northstar/api:replace-with-immutable-tag
+          command: [celery, -A, northstar_api.workers.celery_app:celery_app, worker, --loglevel=INFO, --concurrency=2]
+          envFrom: [{configMapRef: {name: northstar-config}}, {secretRef: {name: northstar-secrets}}]
+          env: [{name: DATABASE_URL, valueFrom: {secretKeyRef: {name: northstar-secrets, key: WORKER_DATABASE_URL}}}]
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]

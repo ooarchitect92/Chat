@@ -5,14 +5,13 @@ import hashlib
 import html
 import io
 import re
-import zipfile
 import tempfile
+import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
-
-import fitz
 from uuid import UUID
 
+import fitz  # type: ignore[import-untyped]
 import structlog
 from docx import Document
 from pypdf import PdfReader
@@ -28,12 +27,12 @@ from northstar_api.models import (
     KnowledgeSource,
     KnowledgeStatus,
 )
-from northstar_api.services.llm import nvidia_adapter
-from northstar_api.services.vision import extract_vision_text
 from northstar_api.services.crawler import crawl_website, take_screenshot
+from northstar_api.services.llm import nvidia_adapter
 from northstar_api.services.object_store import object_store
 from northstar_api.services.outbox import enqueue_event
 from northstar_api.services.safe_fetch import fetch_public_text
+from northstar_api.services.vision import extract_vision_text
 
 logger = structlog.get_logger(__name__)
 

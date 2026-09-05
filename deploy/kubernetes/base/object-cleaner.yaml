@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: northstar-object-cleaner, namespace: northstar}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: northstar-object-cleaner}}
+  template:
+    metadata: {labels: {app: northstar-object-cleaner, app.kubernetes.io/part-of: northstar}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001}
+      containers:
+        - name: object-cleaner
+          image: northstar/api:replace-with-immutable-tag
+          command: [python, -m, northstar_api.workers.object_cleaner]
+          envFrom: [{configMapRef: {name: northstar-config}}, {secretRef: {name: northstar-secrets}}]
+          env: [{name: DATABASE_URL, valueFrom: {secretKeyRef: {name: northstar-secrets, key: WORKER_DATABASE_URL}}}]
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]

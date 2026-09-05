@@ -24,6 +24,10 @@ Never commit `.env`, credentials, exported customer data, or browser-audit artif
 - Transactional outbox delivery so database commits and published analytics events do not silently diverge.
 - Structured logs, Prometheus metrics, health/readiness probes, CI checks, and container health gates.
 
+## Repository map
+
+Frontend applications, backend services, infrastructure support, Docker guidance, and Kubernetes resources have explicit directory boundaries. Start with [the repository structure guide](docs/repository-structure.md); deployment resources live under [`deploy/`](deploy/).
+
 ## Quick start
 
 ### Windows: one click
