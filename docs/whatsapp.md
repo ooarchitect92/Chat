@@ -1,6 +1,6 @@
 # Meta WhatsApp setup and operations
 
-Northstar connects to the official Meta WhatsApp Business Platform Cloud API through Embedded Signup v4. The supported result is one Cloud API phone number per Northstar workspace, bound to one active agent. The Meta picker can select a Cloud API number already attached to the chosen WhatsApp Business Account (WABA), or it can add and verify a new number.
+Northstar connects to the official Meta WhatsApp Business Platform Cloud API through Embedded Signup v4. A workspace can maintain multiple connections: each active bot can have one dedicated Cloud API phone number, and every phone number can route to only one bot. The Meta picker can select a Cloud API number already attached to the chosen WhatsApp Business Account (WABA), or it can add and verify a new number.
 
 This is not a WhatsApp Web QR-code integration and it never asks Northstar for a Facebook password. Meta owns the login, consent, business selection, number selection, and SMS/voice verification screens.
 
@@ -115,7 +115,7 @@ Meta requires Embedded Signup phone registration within its current registration
 
 ## Disconnect and credential lifecycle
 
-**Disconnect** deletes Northstar's encrypted local credential and route. It does not delete/deregister the customer's number, revoke the Facebook user's permissions, or unsubscribe the entire WABA. A WABA subscription and business token can cover other numbers or workspaces, so destructive remote cleanup from one workspace would be unsafe. Valid later events for a locally disconnected number are signature-verified, acknowledged, and ignored.
+**Disconnect** operates on the selected bot only: it deletes that bot's encrypted local credential and phone route while other bot connections remain active. It does not delete/deregister the customer's number, revoke the Facebook user's permissions, or unsubscribe the entire WABA. A WABA subscription and business token can cover other numbers or workspaces, so destructive remote cleanup from one bot would be unsafe. Valid later events for a locally disconnected number are signature-verified, acknowledged, and ignored.
 
 If a customer wants to remove the app from the whole business, do that in Meta Business Settings only after confirming no other number relies on it. If the customer wants to deregister or migrate a number, use Meta's dedicated process; it is intentionally not hidden behind Northstar's ordinary Disconnect button.
 
@@ -144,7 +144,7 @@ Token expiry is checked when displaying status and resolving webhooks. An expire
 | Facebook popup is blocked | Start it only with the button and allow popups for the application origin. Do not invoke signup automatically on page load. |
 | Meta does not show the expected WABA/number | The Facebook user needs business-asset access; confirm the Embedded Signup configuration's asset/product settings and number eligibility. |
 | New number cannot verify | Confirm SMS/voice access, country/use-case eligibility, and that the number is not still attached to an incompatible WhatsApp deployment. |
-| Completion returns 409 | Publish the selected agent, disconnect a different existing workspace number first, or restart if the single-use signup session was already consumed. |
+| Completion returns 409 | Publish the selected bot, disconnect that bot's current number before replacing it, choose a number not dedicated to another bot, or restart if the single-use signup session was already consumed. |
 | Completion returns 502 | Inspect Meta dashboard status and safe server logs; repeat Embedded Signup to obtain a fresh short-lived code. |
 | Webhook verification fails | Callback URL, verify token, TLS certificate, ingress route, and Meta field subscription must match exactly. |
 | Messages arrive but no answer is sent | Check the durable receipt status, RabbitMQ worker/recovery dispatcher, Redis, NVIDIA availability, token expiry, and connection `last_error`. |

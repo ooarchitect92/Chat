@@ -407,6 +407,7 @@ class WhatsAppStatusOut(APIModel):
     enabled: bool
     connected: bool
     connection: WhatsAppConnectionOut | None = None
+    connections: list[WhatsAppConnectionOut] = Field(default_factory=list)
 
 
 class WhatsAppBootstrapOut(WhatsAppStatusOut):

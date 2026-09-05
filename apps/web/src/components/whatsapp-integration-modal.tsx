@@ -44,7 +44,7 @@ function metaConfiguration(value: WhatsAppBootstrap | null) {
 export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }: WhatsAppIntegrationModalProps) {
   const { pushToast } = useToast();
   const [configuration, setConfiguration] = useState<WhatsAppBootstrap | null>(null);
-  const [connection, setConnection] = useState<WhatsAppConnection | null>(null);
+  const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentId, setAgentId] = useState('');
   const [pin, setPin] = useState('');
@@ -81,9 +81,10 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
       api.agents.list(),
     ]).then(async ([bootstrap, status, agentItems]) => {
       if (!active) return;
-      const current = status.connection ?? bootstrap.connection ?? null;
+      const availableConnections = status.connections?.length ? status.connections : status.connection ? [status.connection] : bootstrap.connections?.length ? bootstrap.connections : bootstrap.connection ? [bootstrap.connection] : [];
+      const current = availableConnections[0] ?? null;
       setConfiguration({ ...bootstrap, enabled: status.enabled, connected: status.connected, connection: current });
-      setConnection(current);
+      setConnections(availableConnections);
       setAgents(agentItems);
       setAgentId(current?.agentId ?? agentItems.find((agent) => agent.status === 'active')?.id ?? '');
       const sdkConfiguration = metaConfiguration(bootstrap);
@@ -116,7 +117,8 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
     };
   }, [open, revision, setOperation]);
 
-  const selectedAgent = useMemo(() => agents.find((agent) => agent.id === (connection?.agentId ?? agentId)), [agentId, agents, connection?.agentId]);
+  const connection = useMemo(() => connections.find((item) => item.agentId === agentId) ?? null, [agentId, connections]);
+  const selectedAgent = useMemo(() => agents.find((agent) => agent.id === agentId), [agentId, agents]);
   const activeAgents = useMemo(() => agents.filter((agent) => agent.status === 'active'), [agents]);
   const pinValid = /^\d{6}$/.test(pin);
   const busy = operation !== 'idle';
@@ -161,7 +163,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
       setConfiguration((current) => current ? { ...current, signupSession: null } : current);
       return api.integrations.whatsapp.complete({ ...selection, agentId, signupSession, twoStepVerificationPin: pin });
     }).then((connected) => {
-      setConnection(connected);
+      setConnections((current) => [...current.filter((item) => item.agentId !== connected.agentId), connected]);
       setFacebookStatus('connected');
       setConfiguration((current) => current ? { ...current, connected: true, connection: connected } : current);
       setPin('');
@@ -210,11 +212,11 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
     setOperation('disconnecting');
     setError(null);
     try {
-      await api.integrations.whatsapp.disconnect();
-      setConnection(null);
+      await api.integrations.whatsapp.disconnect(agentId);
+      setConnections((current) => current.filter((item) => item.agentId !== agentId));
       setConfiguration((current) => current ? { ...current, connected: false, connection: null } : current);
       setConfirmDisconnect(false);
-      onConnectionChanged(false);
+      onConnectionChanged(connections.some((item) => item.agentId !== agentId && item.status === 'connected'));
       pushToast('WhatsApp disconnected');
       // The previous signup session was consumed by the original connection.
       // Reload before offering the reconnect button.
@@ -261,6 +263,8 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
 
       {!loading && configuration?.enabled && sdkReady ? <div className="facebook-session-card"><span className="meta-f" aria-hidden="true">f</span><div><strong>Facebook account</strong><small>{facebookStatus === 'connected' ? 'Signed in in this browser. You can reuse the session or choose another account in Meta.' : 'Not signed in in this browser. Meta will ask you to log in.'}</small></div><Badge tone={facebookStatus === 'connected' ? 'success' : 'neutral'}>{facebookStatus === 'connected' ? 'Signed in' : 'Signed out'}</Badge>{facebookStatus === 'connected' ? <Button variant="secondary" size="sm" icon={LogOut} onClick={() => void logOutOfFacebook()} disabled={busy}>{operation === 'logging-out' ? 'Logging out…' : 'Log out'}</Button> : null}</div> : null}
 
+      {!loading && configuration?.enabled ? <div className="whatsapp-bot-picker"><Field label="Bot connection" htmlFor="whatsapp-bot" hint="Each bot has one dedicated number and isolated message routing."><select id="whatsapp-bot" value={agentId} onChange={(event) => { setAgentId(event.target.value); setConfirmDisconnect(false); setPin(''); }} disabled={busy || activeAgents.length === 0}>{activeAgents.length === 0 ? <option value="">No active bots available</option> : activeAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{connections.some((item) => item.agentId === agent.id) ? ' — Connected' : ' — Not connected'}</option>)}</select></Field><Badge tone="brand">{connections.length} connected</Badge></div> : null}
+
       {!loading && connection ? <>
         <div className="whatsapp-number-card">
           <span className="whatsapp-number-card__icon"><Phone /></span>
@@ -288,12 +292,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
             <li><span>3</span><div><strong>Confirm permissions</strong><small>Meta returns a one-time code that Northstar exchanges securely on the server.</small></div></li>
           </ol>
         </div>
-        <div className="whatsapp-form">
-          <Field label="AI agent" htmlFor="whatsapp-agent" hint="Incoming messages to the selected number will use this agent and its knowledge.">
-            <select id="whatsapp-agent" value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={busy || activeAgents.length === 0}>
-              {activeAgents.length === 0 ? <option value="">No active agents available</option> : activeAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-            </select>
-          </Field>
+        <div className="whatsapp-form whatsapp-form--pin">
           <Field label="Two-step verification PIN" htmlFor="whatsapp-pin" messageId="whatsapp-pin-help" hint="Choose a new six-digit PIN for a new number, or enter the existing PIN for a registered Cloud API number." error={!pin || pinValid ? undefined : 'Enter exactly six digits.'}>
             <input id="whatsapp-pin" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit PIN" disabled={busy} required aria-invalid={Boolean(pin && !pinValid)} aria-describedby="whatsapp-pin-help" />
           </Field>

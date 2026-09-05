@@ -151,13 +151,15 @@ async def integration_list(session: AsyncSession, tenant_id: UUID) -> list[Integ
             )
         ).all()
     }
-    whatsapp = await session.scalar(
+    whatsapp_connections = list(
+        await session.scalars(
         select(WhatsAppConnection).where(
             WhatsAppConnection.tenant_id == tenant_id,
             WhatsAppConnection.status == "connected",
         )
+        )
     )
-    states["whatsapp"] = bool(whatsapp and _token_is_current(whatsapp))
+    states["whatsapp"] = any(_token_is_current(item) for item in whatsapp_connections)
     return [
         IntegrationOut.model_validate(
             {
@@ -241,28 +243,30 @@ def whatsapp_connection_response(
 
 async def whatsapp_status(session: AsyncSession, tenant_id: UUID) -> WhatsAppStatusOut:
     settings = get_settings()
-    connection = await session.scalar(
-        select(WhatsAppConnection).where(WhatsAppConnection.tenant_id == tenant_id)
-    )
-    token_current = bool(connection and connection.status == "connected" and _token_is_current(connection))
-    connection_status = None
-    if connection:
-        connection_status = (
-            "reconnect_required"
-            if connection.status == "connected" and not token_current
-            else connection.status
+    connections = list(
+        await session.scalars(
+            select(WhatsAppConnection)
+            .where(WhatsAppConnection.tenant_id == tenant_id)
+            .order_by(WhatsAppConnection.connected_at, WhatsAppConnection.id)
         )
+    )
+    responses = [
+        whatsapp_connection_response(
+            connection,
+            status_override=(
+                "reconnect_required"
+                if connection.status == "connected" and not _token_is_current(connection)
+                else connection.status
+            ),
+        )
+        for connection in connections
+    ]
+    token_current = any(item.status == "connected" and _token_is_current(item) for item in connections)
     return WhatsAppStatusOut(
         enabled=settings.whatsapp_configured,
         connected=token_current,
-        connection=(
-            whatsapp_connection_response(
-                connection,
-                status_override=connection_status,
-            )
-            if connection
-            else None
-        ),
+        connection=responses[0] if responses else None,
+        connections=responses,
     )
 
 
@@ -277,6 +281,7 @@ async def whatsapp_bootstrap(principal: AdminPrincipal, session: DB) -> WhatsApp
         enabled=status.enabled,
         connected=status.connected,
         connection=status.connection,
+        connections=status.connections,
         app_id=settings.meta_app_id if status.enabled else None,
         configuration_id=(settings.meta_whatsapp_configuration_id if status.enabled else None),
         api_version=settings.meta_graph_api_version,
@@ -319,7 +324,10 @@ async def complete_whatsapp_signup(
             detail="Publish the agent before connecting it to WhatsApp",
         )
     current_connection = await session.scalar(
-        select(WhatsAppConnection).where(WhatsAppConnection.tenant_id == principal.tenant_id)
+        select(WhatsAppConnection).where(
+            WhatsAppConnection.tenant_id == principal.tenant_id,
+            WhatsAppConnection.agent_id == payload.agent_id,
+        )
     )
     if current_connection and (
         current_connection.waba_id != payload.waba_id
@@ -327,7 +335,7 @@ async def complete_whatsapp_signup(
     ):
         raise HTTPException(
             status_code=409,
-            detail="Disconnect the current WhatsApp number before selecting a different one",
+            detail="Disconnect this bot's current WhatsApp number before selecting a different one",
         )
     if session.bind and session.bind.dialect.name == "postgresql":
         phone_owner = await session.scalar(
@@ -340,10 +348,20 @@ async def complete_whatsapp_signup(
                 WhatsAppConnection.phone_number_id == payload.phone_number_id
             )
         )
+    phone_connection = await session.scalar(
+        select(WhatsAppConnection).where(
+            WhatsAppConnection.phone_number_id == payload.phone_number_id
+        )
+    )
     if phone_owner is not None and UUID(str(phone_owner)) != principal.tenant_id:
         raise HTTPException(
             status_code=409,
             detail="That WhatsApp phone number is already connected to another workspace",
+        )
+    if phone_connection is not None and phone_connection.agent_id != payload.agent_id:
+        raise HTTPException(
+            status_code=409,
+            detail="That WhatsApp phone number is already dedicated to another bot",
         )
     try:
         setup = await whatsapp_client.complete_setup(
@@ -461,8 +479,8 @@ async def _consume_whatsapp_signup_session(
         raise HTTPException(status_code=409, detail="WhatsApp signup session was already used")
 
 
-@router.delete("/whatsapp", status_code=204)
-async def disconnect_whatsapp(principal: AdminPrincipal, session: DB) -> None:
+@router.delete("/whatsapp/{agent_id}", status_code=204)
+async def disconnect_whatsapp(agent_id: UUID, principal: AdminPrincipal, session: DB) -> None:
     if engine.dialect.name == "postgresql":
         async with engine.connect() as setup_lock_connection:
             async with setup_lock_connection.begin():
@@ -471,14 +489,36 @@ async def disconnect_whatsapp(principal: AdminPrincipal, session: DB) -> None:
                     text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
                     {"key": tenant_lock_key},
                 )
-                await _disconnect_whatsapp_locked(principal, session, setup_lock_connection)
+                await _disconnect_whatsapp_locked(agent_id, principal, session, setup_lock_connection)
         return
 
     async with _local_setup_lock:
-        await _disconnect_whatsapp_locked(principal, session)
+        await _disconnect_whatsapp_locked(agent_id, principal, session)
+
+
+@router.delete("/whatsapp", status_code=204, include_in_schema=False)
+async def disconnect_single_whatsapp(principal: AdminPrincipal, session: DB) -> None:
+    """Compatibility route for clients created before per-bot connections."""
+
+    agent_ids = list(
+        await session.scalars(
+            select(WhatsAppConnection.agent_id).where(
+                WhatsAppConnection.tenant_id == principal.tenant_id
+            )
+        )
+    )
+    if not agent_ids:
+        return
+    if len(agent_ids) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Choose the bot whose WhatsApp number should be disconnected",
+        )
+    await disconnect_whatsapp(agent_ids[0], principal, session)
 
 
 async def _disconnect_whatsapp_locked(
+    agent_id: UUID,
     principal: AdminPrincipal,
     session: AsyncSession,
     setup_lock_connection: AsyncConnection | None = None,
@@ -486,7 +526,10 @@ async def _disconnect_whatsapp_locked(
     # The tenant setup lock is already held, so this read is stable against
     # Embedded Signup. Acquire the phone setup lock second, matching /complete.
     connection = await session.scalar(
-        select(WhatsAppConnection).where(WhatsAppConnection.tenant_id == principal.tenant_id)
+        select(WhatsAppConnection).where(
+            WhatsAppConnection.tenant_id == principal.tenant_id,
+            WhatsAppConnection.agent_id == agent_id,
+        )
     )
     if not connection:
         return
@@ -641,7 +684,14 @@ async def _disconnect_whatsapp_locked(
         )
     )
     if integration:
-        integration.connected = False
+        remaining_connection = await session.scalar(
+            select(WhatsAppConnection.id).where(
+                WhatsAppConnection.tenant_id == principal.tenant_id,
+                WhatsAppConnection.id != connection.id,
+                WhatsAppConnection.status == "connected",
+            )
+        )
+        integration.connected = remaining_connection is not None
         integration.config_encrypted = None
     enqueue_event(
         session,
@@ -649,6 +699,11 @@ async def _disconnect_whatsapp_locked(
         aggregate_type="integration",
         aggregate_id="whatsapp",
         event_type="integration.connection.changed.v1",
-        payload={"integrationId": "whatsapp", "connected": False},
+        payload={
+            "integrationId": "whatsapp",
+            "connected": bool(integration and integration.connected),
+            "agentId": str(agent_id),
+            "phoneNumberId": connection.phone_number_id,
+        },
     )
     await session.commit()

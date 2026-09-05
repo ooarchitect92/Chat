@@ -454,6 +454,70 @@ async def _clear_whatsapp_state() -> None:
         await session.commit()
 
 
+async def test_workspace_can_manage_one_dedicated_number_per_bot(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _clear_whatsapp_state()
+    monkeypatch.setattr(integrations_router, "get_settings", whatsapp_settings)
+    agent_ids: list[UUID] = []
+    for name in ("Support WhatsApp Bot", "Sales WhatsApp Bot"):
+        created = await client.post(
+            "/api/v1/agents",
+            headers=auth_headers,
+            json={"name": name, "description": "Dedicated WhatsApp routing test"},
+        )
+        assert created.status_code == 201, created.text
+        agent_ids.append(UUID(created.json()["id"]))
+
+    token = auth_headers["Authorization"].removeprefix("Bearer ")
+    tenant_id = UUID(decode_token(token, "access")["tid"])
+    async with SessionFactory() as session:
+        session.add_all(
+            [
+                WhatsAppConnection(
+                    tenant_id=tenant_id,
+                    agent_id=agent_ids[0],
+                    waba_id="555",
+                    phone_number_id="777",
+                    display_phone_number="+1 555 0100",
+                    verified_name="Support Business",
+                    access_token_encrypted=b"support-token",
+                    status="connected",
+                ),
+                WhatsAppConnection(
+                    tenant_id=tenant_id,
+                    agent_id=agent_ids[1],
+                    waba_id="555",
+                    phone_number_id="888",
+                    display_phone_number="+1 555 0200",
+                    verified_name="Sales Business",
+                    access_token_encrypted=b"sales-token",
+                    status="connected",
+                ),
+            ]
+        )
+        await session.commit()
+
+    status = await client.get("/api/v1/integrations/whatsapp/status", headers=auth_headers)
+    assert status.status_code == 200, status.text
+    assert status.json()["connected"] is True
+    assert {item["agentId"] for item in status.json()["connections"]} == {
+        str(agent_ids[0]),
+        str(agent_ids[1]),
+    }
+
+    disconnected = await client.delete(
+        f"/api/v1/integrations/whatsapp/{agent_ids[0]}", headers=auth_headers
+    )
+    assert disconnected.status_code == 204, disconnected.text
+    remaining = await client.get("/api/v1/integrations/whatsapp/status", headers=auth_headers)
+    assert remaining.json()["connected"] is True
+    assert [item["agentId"] for item in remaining.json()["connections"]] == [str(agent_ids[1])]
+    await _clear_whatsapp_state()
+
+
 async def test_embedded_signup_and_signed_idempotent_webhook(
     client: AsyncClient,
     auth_headers: dict[str, str],

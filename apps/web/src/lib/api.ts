@@ -298,7 +298,7 @@ export const api = {
       complete: (input: CompleteWhatsAppSignupInput) => request<WhatsAppConnection>('/integrations/whatsapp/complete', {
         method: 'POST', body: JSON.stringify(input),
       }),
-      disconnect: () => request<void>('/integrations/whatsapp', { method: 'DELETE' }),
+      disconnect: (agentId: string) => request<void>(`/integrations/whatsapp/${agentId}`, { method: 'DELETE' }),
     },
   },
   widget: {

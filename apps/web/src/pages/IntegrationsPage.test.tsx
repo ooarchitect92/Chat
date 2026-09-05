@@ -100,8 +100,8 @@ describe('IntegrationsPage WhatsApp connection', () => {
 
     const continueButton = await screen.findByRole('button', { name: 'Continue with Facebook' });
     expect(continueButton).toBeDisabled();
-    const agentSelect = screen.getByLabelText('AI agent');
-    expect(within(agentSelect).getAllByRole('option').map((option) => option.textContent)).toEqual(['Northstar Guide', 'Sales Concierge']);
+    const agentSelect = screen.getByLabelText('Bot connection');
+    expect(within(agentSelect).getAllByRole('option').map((option) => option.textContent)).toEqual(['Northstar Guide — Not connected', 'Sales Concierge — Not connected']);
     expect(within(agentSelect).queryByRole('option', { name: /Onboarding Coach/ })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Two-step verification PIN'), '123456');
     expect(continueButton).toBeEnabled();
@@ -131,13 +131,37 @@ describe('IntegrationsPage WhatsApp connection', () => {
     await user.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(apiMocks.disconnect).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Disconnect WhatsApp' }));
-    await waitFor(() => expect(apiMocks.disconnect).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiMocks.disconnect).toHaveBeenCalledWith(connection.agentId));
     expect(await screen.findByText('Connect in a few steps')).toBeInTheDocument();
     expect(apiMocks.bootstrap).toHaveBeenCalledTimes(2);
 
     await user.type(screen.getByLabelText('Two-step verification PIN'), '112233');
     await user.click(screen.getByRole('button', { name: 'Continue with Facebook' }));
     await waitFor(() => expect(apiMocks.complete).toHaveBeenCalledWith(expect.objectContaining({ signupSession: 'fresh-reconnect-session' })));
+  });
+
+  it('manages independent phone connections for multiple bots', async () => {
+    const secondConnection = {
+      ...connection,
+      agentId: demoAgents[1]!.id,
+      phoneNumberId: 'phone-2',
+      displayPhoneNumber: '+1 555 0200',
+      verifiedName: 'Northstar Sales',
+    };
+    apiMocks.listIntegrations.mockResolvedValue(demoIntegrations.map((item) => item.id === 'whatsapp' ? { ...item, connected: true } : item));
+    apiMocks.bootstrap.mockResolvedValue({ ...bootstrap, connected: true, connection, connections: [connection, secondConnection] });
+    apiMocks.status.mockResolvedValue({ enabled: true, connected: true, connection, connections: [connection, secondConnection] });
+    const user = userEvent.setup();
+    renderPage();
+    const whatsappHeading = await screen.findByRole('heading', { name: 'WhatsApp' });
+    await user.click(within(whatsappHeading.closest('section')!).getByRole('button', { name: 'Manage' }));
+
+    expect(await screen.findByText('+1 555 0100')).toBeInTheDocument();
+    expect(screen.getByText('2 connected')).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Bot connection'), demoAgents[1]!.id);
+    expect(await screen.findByText('+1 555 0200')).toBeInTheDocument();
+    expect(screen.getByText('Northstar Sales')).toBeInTheDocument();
+    expect(screen.queryByText('+1 555 0100')).not.toBeInTheDocument();
   });
 
   it('shows the reusable Facebook session and lets the user log out without disconnecting WhatsApp', async () => {

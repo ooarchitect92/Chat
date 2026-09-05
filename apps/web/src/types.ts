@@ -149,12 +149,14 @@ export interface WhatsAppBootstrap {
   enabled: boolean;
   connected: boolean;
   connection: WhatsAppConnection | null;
+  connections?: WhatsAppConnection[];
 }
 
 export interface WhatsAppStatus {
   enabled: boolean;
   connected: boolean;
   connection: WhatsAppConnection | null;
+  connections?: WhatsAppConnection[];
 }
 
 export interface CompleteWhatsAppSignupInput {

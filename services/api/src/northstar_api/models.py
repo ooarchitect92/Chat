@@ -486,7 +486,7 @@ class WhatsAppConnection(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     __tablename__ = "whatsapp_connections"
     __table_args__ = (
-        UniqueConstraint("tenant_id", name="uq_whatsapp_connections_tenant_id"),
+        UniqueConstraint("tenant_id", "agent_id", name="uq_whatsapp_connections_tenant_agent"),
         UniqueConstraint("phone_number_id", name="uq_whatsapp_connections_phone_number_id"),
         Index("ix_whatsapp_connections_scope", "tenant_id", "agent_id"),
     )
