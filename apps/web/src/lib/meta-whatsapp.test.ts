@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadFacebookSdk, MetaSignupError, startWhatsAppEmbeddedSignup } from '@/lib/meta-whatsapp';
+import {
+  getFacebookLoginStatus, loadFacebookSdk, logoutFacebook, MetaSignupError, startWhatsAppEmbeddedSignup,
+} from '@/lib/meta-whatsapp';
 
 const configuration = { appId: '123456789', configurationId: '987654321', apiVersion: 'v26.0' };
 
@@ -7,9 +9,11 @@ describe('Meta WhatsApp Embedded Signup', () => {
   let loginCallback: ((response: { authResponse?: { code?: string } }) => void) | undefined;
   const init = vi.fn();
   const login = vi.fn((callback: (response: { authResponse?: { code?: string } }) => void) => { loginCallback = callback; });
+  const getLoginStatus = vi.fn((callback: (response: { status?: 'connected' | 'not_authorized' | 'unknown' }) => void) => callback({ status: 'connected' }));
+  const logout = vi.fn((callback: (response: { status?: 'connected' | 'not_authorized' | 'unknown' }) => void) => callback({ status: 'unknown' }));
 
   beforeEach(() => {
-    window.FB = { init, login };
+    window.FB = { init, login, getLoginStatus, logout };
     loginCallback = undefined;
     document.getElementById('facebook-jssdk')?.remove();
   });
@@ -98,7 +102,15 @@ describe('Meta WhatsApp Embedded Signup', () => {
     await expect(firstAttempt).rejects.toEqual(expect.objectContaining<Partial<MetaSignupError>>({ reason: 'failed' }));
     expect(document.getElementById('facebook-jssdk')).toBeNull();
 
-    window.FB = { init, login };
+    window.FB = { init, login, getLoginStatus, logout };
     await expect(loadFacebookSdk(configuration)).resolves.toBe(window.FB);
+  });
+
+  it('reports and logs out the reusable Facebook browser session', async () => {
+    await expect(getFacebookLoginStatus(configuration)).resolves.toBe('connected');
+    await expect(logoutFacebook(configuration)).resolves.toBe('unknown');
+
+    expect(getLoginStatus).toHaveBeenCalledWith(expect.any(Function), true);
+    expect(logout).toHaveBeenCalledOnce();
   });
 });

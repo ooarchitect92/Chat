@@ -1,12 +1,13 @@
 import {
   AlertCircle, Bot, Building2, CheckCircle2, ExternalLink, LoaderCircle, LockKeyhole,
-  MessageCircle, Phone, RefreshCw, ShieldCheck, Unplug,
+  LogOut, MessageCircle, Phone, RefreshCw, ShieldCheck, Unplug,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/components/providers';
 import { Badge, Button, Field, Modal, StatusDot } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
-import { loadFacebookSdk, MetaSignupError, startWhatsAppEmbeddedSignup } from '@/lib/meta-whatsapp';
+import { getFacebookLoginStatus, loadFacebookSdk, logoutFacebook, MetaSignupError, startWhatsAppEmbeddedSignup } from '@/lib/meta-whatsapp';
+import type { FacebookLoginStatus } from '@/lib/meta-whatsapp';
 import type { Agent, WhatsAppBootstrap, WhatsAppConnection } from '@/types';
 
 interface WhatsAppIntegrationModalProps {
@@ -15,7 +16,7 @@ interface WhatsAppIntegrationModalProps {
   onConnectionChanged: (connected: boolean) => void;
 }
 
-type Operation = 'idle' | 'waiting-meta' | 'finalizing' | 'disconnecting';
+type Operation = 'idle' | 'waiting-meta' | 'finalizing' | 'disconnecting' | 'logging-out';
 
 function readableError(error: unknown): string {
   if (error instanceof MetaSignupError) return error.message;
@@ -49,6 +50,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
+  const [facebookStatus, setFacebookStatus] = useState<FacebookLoginStatus>('unknown');
   const [operation, setOperationState] = useState<Operation>('idle');
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
     let active = true;
     setLoading(true);
     setSdkReady(false);
+    setFacebookStatus('unknown');
     setConfirmDisconnect(false);
     setError(refreshError.current);
     refreshError.current = null;
@@ -87,7 +90,11 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
       if (bootstrap.enabled && sdkConfiguration && bootstrap.signupSession) {
         try {
           await loadFacebookSdk(sdkConfiguration);
-          if (active) setSdkReady(true);
+          const loginStatus = await getFacebookLoginStatus(sdkConfiguration);
+          if (active) {
+            setSdkReady(true);
+            setFacebookStatus(loginStatus);
+          }
         } catch (sdkError) {
           if (active) setError(readableError(sdkError));
         }
@@ -155,6 +162,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
       return api.integrations.whatsapp.complete({ ...selection, agentId, signupSession, twoStepVerificationPin: pin });
     }).then((connected) => {
       setConnection(connected);
+      setFacebookStatus('connected');
       setConfiguration((current) => current ? { ...current, connected: true, connection: connected } : current);
       setPin('');
       onConnectionChanged(true);
@@ -179,6 +187,22 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
         setOperation('idle');
       }
     });
+  };
+
+  const logOutOfFacebook = async () => {
+    const sdkConfiguration = metaConfiguration(configuration);
+    if (!sdkConfiguration || !sdkReady || busy) return;
+    setOperation('logging-out');
+    setError(null);
+    try {
+      const nextStatus = await logoutFacebook(sdkConfiguration);
+      setFacebookStatus(nextStatus === 'connected' ? 'unknown' : nextStatus);
+      pushToast('Logged out of Facebook in this browser');
+    } catch (logoutError) {
+      setError(readableError(logoutError));
+    } finally {
+      setOperation('idle');
+    }
   };
 
   const disconnect = async () => {
@@ -235,6 +259,8 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
 
       {!loading && metaSetupRequired ? <div className="integration-setup-required"><LockKeyhole /><div><h3>Set up Facebook Login for WhatsApp</h3><p>Create a Meta Business app with WhatsApp and Facebook Login for Business, then create an Embedded Signup configuration. Add the App ID, configuration ID, App Secret, webhook verification token, and encryption key to the server <code>.env</code> file and run <code>start.bat</code> again. Secrets must never be entered in this browser.</p><a className="button button--primary button--sm meta-setup-link" href="https://developers.facebook.com/apps/" target="_blank" rel="noreferrer">Open Meta App Dashboard <ExternalLink /></a></div></div> : null}
 
+      {!loading && configuration?.enabled && sdkReady ? <div className="facebook-session-card"><span className="meta-f" aria-hidden="true">f</span><div><strong>Facebook account</strong><small>{facebookStatus === 'connected' ? 'Signed in in this browser. You can reuse the session or choose another account in Meta.' : 'Not signed in in this browser. Meta will ask you to log in.'}</small></div><Badge tone={facebookStatus === 'connected' ? 'success' : 'neutral'}>{facebookStatus === 'connected' ? 'Signed in' : 'Signed out'}</Badge>{facebookStatus === 'connected' ? <Button variant="secondary" size="sm" icon={LogOut} onClick={() => void logOutOfFacebook()} disabled={busy}>{operation === 'logging-out' ? 'Logging out…' : 'Log out'}</Button> : null}</div> : null}
+
       {!loading && connection ? <>
         <div className="whatsapp-number-card">
           <span className="whatsapp-number-card__icon"><Phone /></span>
@@ -258,7 +284,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
           <h3>Connect in a few steps</h3>
           <ol>
             <li><span>1</span><div><strong>Sign in to Facebook</strong><small>Use an account with access to your Meta Business Portfolio.</small></div></li>
-            <li><span>2</span><div><strong>Choose your business and WABA</strong><small>Select a Cloud API number already in the account, or add and verify a new number.</small></div></li>
+            <li><span>2</span><div><strong>Choose your business and number</strong><small>Meta securely loads the eligible accounts and numbers. Select an existing number, or add and verify a new one.</small></div></li>
             <li><span>3</span><div><strong>Confirm permissions</strong><small>Meta returns a one-time code that Northstar exchanges securely on the server.</small></div></li>
           </ol>
         </div>
@@ -273,6 +299,7 @@ export function WhatsAppIntegrationModal({ open, onClose, onConnectionChanged }:
           </Field>
         </div>
         <div className="whatsapp-security-note"><ShieldCheck /><span><strong>Your Meta credentials stay private</strong><small>Northstar never receives your Facebook password. Long-lived access tokens are encrypted and stored only by the backend.</small></span><a href="https://www.facebook.com/business/help" target="_blank" rel="noreferrer">Meta help <ExternalLink /></a></div>
+        <p className="whatsapp-coexistence-note">The number picker is displayed by Meta inside the Facebook signup window. After selection, Northstar automatically fetches and displays the WABA ID, phone number ID, display number, verified business name, connection status, and assigned AI agent.</p>
         <p className="whatsapp-coexistence-note">Numbers connected to the WhatsApp Business App require Meta’s separate Coexistence onboarding flow and are not enabled by this standard Cloud API connection.</p>
       </> : null}
     </div>

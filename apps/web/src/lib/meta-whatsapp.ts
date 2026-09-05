@@ -1,7 +1,9 @@
 interface FacebookLoginResponse {
   authResponse?: { code?: string };
-  status?: string;
+  status?: FacebookLoginStatus;
 }
+
+export type FacebookLoginStatus = 'connected' | 'not_authorized' | 'unknown';
 
 interface FacebookSdk {
   init: (options: { appId: string; autoLogAppEvents: boolean; cookie: boolean; xfbml: boolean; version: string }) => void;
@@ -18,6 +20,52 @@ interface FacebookSdk {
       };
     },
   ) => void;
+  getLoginStatus: (callback: (response: FacebookLoginResponse) => void, force?: boolean) => void;
+  logout: (callback: (response: FacebookLoginResponse) => void) => void;
+}
+
+export function getFacebookLoginStatus(
+  configuration: Pick<MetaSignupConfiguration, 'appId' | 'apiVersion'>,
+): Promise<FacebookLoginStatus> {
+  validateConfiguration(configuration);
+  const sdk = window.FB;
+  if (!sdk) return Promise.resolve('unknown');
+  initialiseSdk(sdk, configuration);
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => resolve('unknown'), 8_000);
+    sdk.getLoginStatus((response) => {
+      window.clearTimeout(timeout);
+      resolve(response.status ?? 'unknown');
+    }, true);
+  });
+}
+
+export function logoutFacebook(
+  configuration: Pick<MetaSignupConfiguration, 'appId' | 'apiVersion'>,
+): Promise<FacebookLoginStatus> {
+  validateConfiguration(configuration);
+  const sdk = window.FB;
+  if (!sdk) throw new MetaSignupError('Meta Login is not available.', 'failed');
+  initialiseSdk(sdk, configuration);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new MetaSignupError('Facebook logout timed out. Please try again.', 'timeout'));
+    }, 15_000);
+    try {
+      sdk.logout((response) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        resolve(response.status ?? 'unknown');
+      });
+    } catch {
+      window.clearTimeout(timeout);
+      reject(new MetaSignupError('Facebook logout could not be completed.', 'failed'));
+    }
+  });
 }
 
 declare global {

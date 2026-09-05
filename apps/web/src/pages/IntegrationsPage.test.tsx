@@ -17,6 +17,8 @@ const apiMocks = vi.hoisted(() => ({
   complete: vi.fn(),
   disconnect: vi.fn(),
   loadFacebookSdk: vi.fn(),
+  getFacebookLoginStatus: vi.fn(),
+  logoutFacebook: vi.fn(),
   startSignup: vi.fn(),
   authSession: vi.fn(),
 }));
@@ -49,6 +51,8 @@ vi.mock('@/lib/meta-whatsapp', () => ({
     }
   },
   loadFacebookSdk: apiMocks.loadFacebookSdk,
+  getFacebookLoginStatus: apiMocks.getFacebookLoginStatus,
+  logoutFacebook: apiMocks.logoutFacebook,
   startWhatsAppEmbeddedSignup: apiMocks.startSignup,
 }));
 
@@ -77,6 +81,8 @@ describe('IntegrationsPage WhatsApp connection', () => {
     apiMocks.bootstrap.mockResolvedValue(bootstrap);
     apiMocks.status.mockResolvedValue(disconnected);
     apiMocks.loadFacebookSdk.mockResolvedValue({});
+    apiMocks.getFacebookLoginStatus.mockResolvedValue('connected');
+    apiMocks.logoutFacebook.mockResolvedValue('unknown');
     apiMocks.startSignup.mockResolvedValue({ code: 'one-time-code', wabaId: 'waba-1', phoneNumberId: 'phone-1' });
     apiMocks.complete.mockResolvedValue(connection);
     apiMocks.disconnect.mockResolvedValue(undefined);
@@ -132,6 +138,25 @@ describe('IntegrationsPage WhatsApp connection', () => {
     await user.type(screen.getByLabelText('Two-step verification PIN'), '112233');
     await user.click(screen.getByRole('button', { name: 'Continue with Facebook' }));
     await waitFor(() => expect(apiMocks.complete).toHaveBeenCalledWith(expect.objectContaining({ signupSession: 'fresh-reconnect-session' })));
+  });
+
+  it('shows the reusable Facebook session and lets the user log out without disconnecting WhatsApp', async () => {
+    apiMocks.listIntegrations.mockResolvedValue(demoIntegrations.map((item) => item.id === 'whatsapp' ? { ...item, connected: true } : item));
+    apiMocks.bootstrap.mockResolvedValue({ ...bootstrap, connected: true, connection });
+    apiMocks.status.mockResolvedValue({ enabled: true, connected: true, connection });
+    const user = userEvent.setup();
+    renderPage();
+    const whatsappHeading = await screen.findByRole('heading', { name: 'WhatsApp' });
+    await user.click(within(whatsappHeading.closest('section')!).getByRole('button', { name: 'Manage' }));
+
+    expect(await screen.findByText('Signed in')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(apiMocks.logoutFacebook).toHaveBeenCalledWith({
+      appId: bootstrap.appId, configurationId: bootstrap.configurationId, apiVersion: bootstrap.apiVersion,
+    }));
+    expect(screen.getByText('Signed out')).toBeInTheDocument();
+    expect(apiMocks.disconnect).not.toHaveBeenCalled();
+    expect(screen.getByText('+1 555 0100')).toBeInTheDocument();
   });
 
   it('surfaces the safe backend error message when Meta cannot register a number', async () => {
